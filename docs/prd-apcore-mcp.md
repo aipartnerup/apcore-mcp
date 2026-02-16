@@ -12,6 +12,14 @@
 
 ---
 
+## Background
+
+apcore-mcp originated from the observation that apcore modules already carry all the metadata AI agent protocols need — `input_schema`, `output_schema`, `description`, and `annotations` — yet there was no standard way to expose them to MCP clients or OpenAI Function Calling. The idea was validated through competitive analysis (5+ manually-built ComfyUI MCP servers, each duplicating schema work) and demand research (MCP ecosystem growth in 2025-2026, OpenAI Function Calling as the dominant tool-use format). The core insight: since the mapping from apcore metadata to both MCP and OpenAI formats is nearly 1:1, a single adapter package can eliminate all manual tool definition work for the entire apcore ecosystem. This PRD formalizes that validated idea into actionable requirements.
+
+> For the original brainstorming and validation notes, see [`ideas/apcore-mcp.md`](../ideas/apcore-mcp.md).
+
+---
+
 ## 1. Executive Summary
 
 **apcore-mcp** is an independent Python adapter package that automatically bridges any apcore Module Registry into both a fully functional MCP (Model Context Protocol) Server and OpenAI-compatible tool definitions. Instead of requiring developers to hand-write MCP tool definitions or OpenAI function schemas for every module, apcore-mcp reads the existing apcore metadata -- `input_schema`, `output_schema`, `description`, and `annotations` -- and generates correct tool definitions at runtime with zero manual effort. The package exposes two primary entry points: `serve(registry)` to launch a standards-compliant MCP Server (supporting stdio, Streamable HTTP, and SSE transports), and `to_openai_tools(registry)` to export an OpenAI-compatible tool list for function calling. By eliminating the manual mapping layer, apcore-mcp reduces tool integration time from approximately 2 hours per module to zero seconds, validates apcore's core claim of "inherent AI compatibility," and serves as the infrastructure layer that gives every `xxx-apcore` project (comfyui-apcore, vnpy-apcore, blender-apcore, etc.) instant MCP and OpenAI capability. This package is the critical multiplier for the apcore ecosystem's adoption in the AI agent landscape.
