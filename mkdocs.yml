@@ -1,0 +1,65 @@
+site_name: apcore-mcp
+site_description: Automatic MCP Server & OpenAI Tools Bridge for apcore — zero code changes required.
+site_url: https://aipartnerup.github.io/apcore-mcp/
+repo_url: https://github.com/aipartnerup/apcore-mcp
+repo_name: aipartnerup/apcore-mcp
+theme:
+  name: material
+  logo: assets/apcore-mcp-logo.svg
+  favicon: assets/apcore-mcp-logo.svg
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - toc.follow
+
+plugins:
+  - search
+
+markdown_extensions:
+  - tables
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+  - attr_list
+  - md_in_html
+
+nav:
+  - Home: index.md
+  - Specifications:
+      - Product Requirements: prd-apcore-mcp.md
+      - Software Requirements: srs-apcore-mcp.md
+      - Technical Design: tech-design-apcore-mcp.md
+      - Test Plan: test-plan-apcore-mcp.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/aipartnerup/apcore-mcp

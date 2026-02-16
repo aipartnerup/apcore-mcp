@@ -1,0 +1,125 @@
+<svg width="512" height="512" viewBox="46 70 420 420" xmlns="http://www.w3.org/2000/svg">
+  <!-- apcore-mcp sea anemone logo - cartoon ocean mascot -->
+
+  <defs>
+    <!-- Body radial gradient: bright center → deep indigo edge -->
+    <radialGradient id="bodyGrad" cx="50%" cy="40%" r="55%">
+      <stop offset="0%" stop-color="#818CF8"/>
+      <stop offset="100%" stop-color="#4338CA"/>
+    </radialGradient>
+
+    <!-- Bioluminescence glow -->
+    <radialGradient id="glowGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#67E8F9" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#67E8F9" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Tentacle gradients (base solid → tip fade) -->
+    <linearGradient id="tentGrad1" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#818CF8" stop-opacity="0.3"/>
+    </linearGradient>
+    <linearGradient id="tentGrad2" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#818CF8"/>
+      <stop offset="100%" stop-color="#A5B4FC" stop-opacity="0.3"/>
+    </linearGradient>
+    <linearGradient id="tentGrad3" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#7C3AED"/>
+      <stop offset="100%" stop-color="#A78BFA" stop-opacity="0.3"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ===== TENTACLES (behind body) ===== -->
+  <!-- 10 tentacles radiating from oral disc, with wavy S-curves and bulbous tips -->
+
+  <!-- Far left -->
+  <path d="M 196,255 C 168,228 128,205 112,165 C 100,138 110,118 100,98"
+        stroke="url(#tentGrad1)" stroke-width="9" fill="none" stroke-linecap="round"/>
+  <circle cx="100" cy="98" r="6" fill="#818CF8" opacity="0.6"/>
+
+  <!-- Left outer -->
+  <path d="M 212,248 C 188,218 162,185 152,145 C 145,118 155,102 148,85"
+        stroke="url(#tentGrad2)" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <circle cx="148" cy="85" r="5.5" fill="#A5B4FC" opacity="0.6"/>
+
+  <!-- Left middle -->
+  <path d="M 228,242 C 216,208 202,175 208,135 C 212,112 202,98 206,82"
+        stroke="url(#tentGrad3)" stroke-width="7" fill="none" stroke-linecap="round"/>
+  <circle cx="206" cy="82" r="5" fill="#A78BFA" opacity="0.6"/>
+
+  <!-- Left inner -->
+  <path d="M 242,238 C 237,202 232,168 238,128 C 241,108 235,94 239,78"
+        stroke="url(#tentGrad1)" stroke-width="7" fill="none" stroke-linecap="round"/>
+  <circle cx="239" cy="78" r="5" fill="#818CF8" opacity="0.6"/>
+
+  <!-- Center left -->
+  <path d="M 252,236 C 250,200 248,164 252,124 C 254,104 250,90 253,75"
+        stroke="url(#tentGrad2)" stroke-width="7" fill="none" stroke-linecap="round"/>
+  <circle cx="253" cy="75" r="4.5" fill="#A5B4FC" opacity="0.6"/>
+
+  <!-- Center right -->
+  <path d="M 260,236 C 262,200 264,164 260,124 C 258,104 262,90 259,75"
+        stroke="url(#tentGrad2)" stroke-width="7" fill="none" stroke-linecap="round"/>
+  <circle cx="259" cy="75" r="4.5" fill="#A5B4FC" opacity="0.6"/>
+
+  <!-- Right inner -->
+  <path d="M 270,238 C 275,202 280,168 274,128 C 271,108 277,94 273,78"
+        stroke="url(#tentGrad1)" stroke-width="7" fill="none" stroke-linecap="round"/>
+  <circle cx="273" cy="78" r="5" fill="#818CF8" opacity="0.6"/>
+
+  <!-- Right middle -->
+  <path d="M 284,242 C 296,208 310,175 304,135 C 300,112 310,98 306,82"
+        stroke="url(#tentGrad3)" stroke-width="7" fill="none" stroke-linecap="round"/>
+  <circle cx="306" cy="82" r="5" fill="#A78BFA" opacity="0.6"/>
+
+  <!-- Right outer -->
+  <path d="M 300,248 C 324,218 350,185 360,145 C 367,118 357,102 364,85"
+        stroke="url(#tentGrad2)" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <circle cx="364" cy="85" r="5.5" fill="#A5B4FC" opacity="0.6"/>
+
+  <!-- Far right -->
+  <path d="M 316,255 C 344,228 384,205 400,165 C 412,138 402,118 412,98"
+        stroke="url(#tentGrad1)" stroke-width="9" fill="none" stroke-linecap="round"/>
+  <circle cx="412" cy="98" r="6" fill="#818CF8" opacity="0.6"/>
+
+  <!-- ===== BODY (column) ===== -->
+  <path d="M 170,258
+           C 170,252 195,240 256,240
+           C 317,240 342,252 342,258
+           L 352,425
+           C 352,450 322,468 256,468
+           C 190,468 160,450 160,425 Z"
+        fill="url(#bodyGrad)"/>
+
+  <!-- Oral disc ruffle -->
+  <path d="M 170,258 Q 191,275 213,258 Q 234,275 256,258 Q 278,275 299,258 Q 320,275 342,258"
+        fill="#4338CA" opacity="0.55"/>
+
+  <!-- Base/foot disc -->
+  <ellipse cx="256" cy="458" rx="100" ry="18" fill="#312E81" opacity="0.35"/>
+
+  <!-- Bioluminescence glow overlay -->
+  <ellipse cx="256" cy="345" rx="75" ry="85" fill="url(#glowGrad)"/>
+
+  <!-- Body highlight (specular) -->
+  <ellipse cx="230" cy="320" rx="45" ry="55" fill="#A5B4FC" opacity="0.2"/>
+
+  <!-- ===== FACE ===== -->
+  <!-- Eyes -->
+  <ellipse cx="224" cy="340" rx="22" ry="24" fill="white"/>
+  <ellipse cx="288" cy="340" rx="22" ry="24" fill="white"/>
+  <!-- Pupils -->
+  <circle cx="230" cy="345" r="13" fill="#1E1B4B"/>
+  <circle cx="294" cy="345" r="13" fill="#1E1B4B"/>
+  <!-- Eye highlights -->
+  <circle cx="235" cy="337" r="6" fill="white"/>
+  <circle cx="299" cy="337" r="6" fill="white"/>
+
+  <!-- Smile -->
+  <path d="M 241,377 Q 256,393 271,377"
+        stroke="#312E81" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+
+  <!-- Cheek blush -->
+  <ellipse cx="207" cy="367" rx="14" ry="9" fill="#C4B5FD" opacity="0.45"/>
+  <ellipse cx="305" cy="367" rx="14" ry="9" fill="#C4B5FD" opacity="0.45"/>
+</svg>

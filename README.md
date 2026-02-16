@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="./apcore-mcp-logo.svg" alt="apcore-mcp logo" width="200"/>
+</div>
+
 # apcore-mcp
 
 Automatic MCP Server & OpenAI Tools Bridge for apcore.
