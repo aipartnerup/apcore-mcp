@@ -89,13 +89,9 @@ apcore-mcp (separate process / library call)
 
 | Language | Repository | Package | Status |
 |----------|-----------|---------|--------|
-| Python | [apcore-mcp-python](https://github.com/aipartnerup/apcore-mcp-python) | `pip install apcore-mcp` | :white_check_mark: v0.1.0 |
-| TypeScript | apcore-mcp-ts | — | Planned |
+| Python | [apcore-mcp-python](https://github.com/aipartnerup/apcore-mcp-python) | `pip install apcore-mcp` |  ✅  v0.1.0 |
+| TypeScript | [apcore-mcp-typescript](https://github.com/aipartnerup/apcore-mcp-typescript) | `npm install apcore-mcp` |  ✅  v0.1.0 |
 | Go | apcore-mcp-go | — | Planned |
-
-### Available Now
-
-- **Python** — [apcore-mcp-python](https://github.com/aipartnerup/apcore-mcp-python) — `pip install apcore-mcp`
 
 ## Specification Documents
 
