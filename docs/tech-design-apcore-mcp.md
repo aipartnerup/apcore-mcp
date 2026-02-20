@@ -2634,7 +2634,7 @@ show_missing = true
 | MCP Resource exposure    | Expose module documentation as MCP Resources (F-020)                  | v1 stable     |
 | Health check endpoint    | `/health` endpoint for HTTP transports (F-019)                        | v1 stable     |
 | A2A agent card export    | Export registry as A2A-compatible agent card                          | apcore-a2a spec |
-| Streaming tool results   | Support for streaming partial results from long-running modules       | MCP SDK streaming support |
+| Streaming tool results   | Bridge `executor.stream()` to MCP clients via `notifications/progress`. Client opt-in via `progressToken`. Each chunk sent as progress notification with `message` containing JSON-serialized chunk. Final `CallToolResult` contains complete accumulated result. | apcore core `stream()` support |
 | Tool usage analytics     | Track tool call counts, latencies, error rates                        | v1 observability |
 | Multi-registry support   | Merge tools from multiple registries into one server                  | v1 stable     |
 

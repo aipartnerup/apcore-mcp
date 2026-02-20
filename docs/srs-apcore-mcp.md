@@ -1408,9 +1408,10 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 - Module ID with no dots (e.g., `"simple"`): Return unchanged.
 - Module ID with multiple dots (e.g., `"comfyui.workflow.execute"`): Return `"comfyui__workflow__execute"`.
 - Module ID with existing underscores (e.g., `"my_module.resize"`): Return `"my_module__resize"`.
-- Module ID with hyphens (e.g., `"my-module.resize"`): Return `"my-module__resize"`.
+- Module ID with hyphens (e.g., `"my-module.resize"`): Reject with validation error. Hyphens are prohibited in canonical module IDs per PROTOCOL_SPEC (reserved for dot→hyphen normalization).
 
-**Error Conditions:** None.
+**Error Conditions:**
+- Module ID containing hyphens: Raise validation error (hyphens are reserved for MCP/OpenAI tool name normalization).
 
 ---
 
@@ -2123,6 +2124,37 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 **Boundary Conditions:** None.
 
 **Error Conditions:** None.
+
+---
+
+#### FR-STREAM-001: Streaming tool execution via notifications/progress
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-STREAM-001 |
+| **Title** | Streaming tool execution via notifications/progress |
+| **Priority** | P1 |
+
+**Description:** When ALL of these conditions are met:
+1. The Executor implements a `stream()` method
+2. The client provides `_meta.progressToken` in the `tools/call` request
+3. The module descriptor has `annotations.streaming = true`
+
+Then the server SHALL:
+1. Call `executor.stream(toolName, args)` instead of `executor.call(toolName, args)`
+2. For each yielded chunk, send `notifications/progress` with:
+   - `progressToken`: the client-provided token
+   - `progress`: monotonically increasing integer (1, 2, 3, ...)
+   - `message`: JSON-serialized chunk content
+3. After iteration completes, return a standard `CallToolResult` with the accumulated complete result
+
+When ANY condition is not met, fall back to normal atomic `executor.call()`.
+
+**Boundary Conditions:**
+- `progressToken` not provided: Normal atomic execution.
+- Executor has no `stream()`: Normal atomic execution.
+- Stream yields zero chunks: Return empty accumulated result `{}`.
+- Stream throws mid-iteration: Map error via `ErrorMapper`, return error result.
 
 ---
 
