@@ -64,11 +64,11 @@ apcore modules carry rich, machine-readable metadata -- `input_schema` (JSON Sch
 
 ### 2.1 PRD Summary
 
-The PRD (`docs/prd-apcore-mcp.md` v1.0) defines 20 features across three priority tiers:
+The PRD (`docs/prd-apcore-mcp.md` v1.0) defines 25 features across three priority tiers:
 
 - **P0 (9 features, F-001 through F-009):** Core schema mapping, annotation mapping, execution routing, error mapping, `serve()` function, stdio/Streamable HTTP transports, `to_openai_tools()`, CLI entry point.
 - **P1 (7 features, F-010 through F-016):** SSE transport, OpenAI annotation embedding, OpenAI strict mode, structured output, Executor passthrough, dynamic tool registration, logging.
-- **P2 (4 features, F-017 through F-020):** Filtering for `to_openai_tools()` and `serve()`, health check endpoint, MCP resource exposure.
+- **P2 (9 features, F-017 through F-025):** Filtering for `to_openai_tools()` and `serve()`, health check endpoint, MCP resource exposure, Prometheus metrics endpoint, metrics collector parameter, input validation parameter, streaming and progress support, MCPServer background wrapper.
 
 ### 2.2 Design-to-PRD Traceability Matrix
 
@@ -88,6 +88,10 @@ The PRD (`docs/prd-apcore-mcp.md` v1.0) defines 20 features across three priorit
 | Module Filtering             | F-017, F-018                | P2       |
 | Health Check                 | F-019                       | P2       |
 | MCP Resource Exposure        | F-020                       | P2       |
+| Metrics Exporter             | F-021, F-022                | P2       |
+| Input Validator              | F-023                       | P2       |
+| Streaming & Progress         | F-024                       | P2       |
+| MCPServer Background Wrapper | F-025                       | P2       |
 
 ### 2.3 Key Constraints from User Requirements
 
@@ -267,14 +271,14 @@ graph TB
 
 **Context:** apcore module IDs use dot notation (e.g., `image.resize`, `comfyui.workflow.execute`). OpenAI function names must match `^[a-zA-Z0-9_-]+$` -- dots are not allowed.
 
-**Decision:** Implement a deterministic, reversible normalization function that replaces `.` with `__` (double underscore) for OpenAI export, and provide a reverse function for dispatching.
+**Decision:** Implement a deterministic, reversible normalization function that replaces `.` with `-` (hyphen) for OpenAI export, and provide a reverse function for dispatching.
 
 **Rationale:**
 - Single underscore `_` risks collision with IDs that already contain underscores (e.g., `image_resize` vs `image.resize`).
-- Double underscore `__` is unambiguous: apcore module IDs do not use consecutive underscores by convention.
+- Hyphen `-` is unambiguous: apcore module IDs do not use hyphens by convention.
 - The mapping is bijective (reversible), which is critical if the user needs to dispatch OpenAI tool calls back to the Executor.
 
-**Consequences:** All OpenAI-facing tool names use `__` instead of `.`. The `ModuleIDNormalizer` class provides both `normalize()` and `denormalize()` methods. MCP tool names retain the original dot notation (MCP has no character restrictions on tool names).
+**Consequences:** All OpenAI-facing tool names use `-` instead of `.`. The `ModuleIDNormalizer` class provides both `normalize()` and `denormalize()` methods. MCP tool names retain the original dot notation (MCP has no character restrictions on tool names).
 
 #### ADR-04: Schema $ref Inlining for MCP/OpenAI Compatibility
 
@@ -304,7 +308,7 @@ src/apcore_mcp/
         schema.py        # SchemaConverter: apcore schemas -> MCP/OpenAI schemas
         annotations.py   # AnnotationMapper: ModuleAnnotations -> MCP ToolAnnotations
         errors.py        # ErrorMapper: apcore errors -> MCP error responses
-        id_normalizer.py # ModuleIDNormalizer: dot-notation <-> underscore
+        id_normalizer.py # ModuleIDNormalizer: dot-notation <-> hyphen
     server/
         __init__.py
         factory.py       # MCPServerFactory: create and configure MCP Server
@@ -527,7 +531,7 @@ sequenceDiagram
         SConv-->>OConv: cleaned JSON Schema dict
 
         OConv->>IDNorm: normalize("image.resize")
-        IDNorm-->>OConv: "image__resize"
+        IDNorm-->>OConv: "image-resize"
 
         alt strict=True
             OConv->>OConv: _apply_strict_mode(schema)
@@ -1588,6 +1592,57 @@ class RegistryListener:
 
 ---
 
+### 6.10 MCPServer Background Wrapper (Python Only)
+
+**Responsibility:** Provide a non-blocking server lifecycle wrapper for embedding an MCP server inside a larger Python application. `MCPServer` wraps `serve()` in a background `threading.Thread`, exposing `start()`, `stop()`, and `wait()` methods.
+
+**Rationale:** The `serve()` function blocks the calling thread (consistent with MCP SDK behavior). In applications that need to run an MCP server alongside other logic (e.g., a GUI, a REST API, or test harnesses), a non-blocking wrapper is necessary. TypeScript does not need an equivalent because `serve()` is already async, and the caller can manage concurrency with standard `Promise`/`async` patterns.
+
+**Public API:**
+
+```python
+class MCPServer:
+    """Non-blocking MCP server wrapper (Python only).
+
+    Wraps serve() in a background thread with start/stop/wait lifecycle.
+    """
+
+    def __init__(
+        self,
+        registry_or_executor: Registry | Executor,
+        **serve_kwargs,
+    ) -> None:
+        """Store configuration. Does not start the server.
+
+        Args:
+            registry_or_executor: Passed through to serve().
+            **serve_kwargs: All keyword arguments accepted by serve()
+                (transport, host, port, name, version, etc.).
+        """
+
+    def start(self) -> None:
+        """Start the MCP server in a background daemon thread.
+
+        Returns immediately. The server runs until stop() is called
+        or the main process exits.
+
+        If the server is already running, the method silently returns (no-op).
+        """
+
+    def stop(self) -> None:
+        """Signal the server to shut down gracefully.
+
+        Non-blocking. Use wait() to block until shutdown completes.
+        """
+
+    def wait(self) -> None:
+        """Block until the server thread has fully stopped."""
+```
+
+**Thread/async safety:** The background thread runs its own `asyncio` event loop via `asyncio.run()`. The `stop()` method signals shutdown by scheduling a cancellation on that loop. The `start()`/`stop()`/`wait()` methods are safe to call from any thread.
+
+---
+
 ## 7. API Design
 
 ### 7.1 `serve()` Function
@@ -1601,11 +1656,16 @@ def serve(
     transport: str = "stdio",
     host: str = "127.0.0.1",
     port: int = 8000,
-    server_name: str = "apcore-mcp",
-    server_version: str | None = None,
+    name: str = "apcore-mcp",
+    version: str | None = None,
     tags: list[str] | None = None,
     prefix: str | None = None,
     log_level: str | None = None,
+    on_startup: Callable[[], None] | None = None,
+    on_shutdown: Callable[[], None] | None = None,
+    dynamic: bool = False,
+    validate_inputs: bool = False,
+    metrics_collector: MetricsExporter | None = None,
 ) -> None:
     """Launch an MCP Server exposing all apcore modules as tools.
 
@@ -1652,7 +1712,7 @@ def serve(
                 Raises ValueError if outside range.
             Boundary: Ports below 1024 require elevated privileges on Unix.
 
-        server_name:
+        name:
             Type: str
             Default: "apcore-mcp"
             Max length: 255 characters
@@ -1660,7 +1720,7 @@ def serve(
             Validation: Must be non-empty, max 255 chars.
                 Raises ValueError if empty or too long.
 
-        server_version:
+        version:
             Type: str | None
             Default: None (uses apcore_mcp.__version__)
             Description: Server version string reported to MCP clients.
@@ -1687,7 +1747,7 @@ def serve(
             Type: str | None
             Default: None (no change to logging configuration)
             Allowed values: "DEBUG", "INFO", "WARNING", "ERROR"
-            Description: Set the log level for the apcore_mcp logger.
+            Description: Set the log level via logging.basicConfig(level=...).
             Validation: Must be one of the allowed values (case-insensitive).
                 Raises ValueError for unknown level.
 
@@ -1783,7 +1843,7 @@ def to_openai_tools(
         {
             "type": "function",
             "function": {
-                "name": "<normalized_module_id>",    # dots replaced with __
+                "name": "<normalized_module_id>",    # dots replaced with -
                 "description": "<description>",
                 "parameters": {<JSON Schema>},
                 "strict": true                       # only if strict=True
@@ -2211,8 +2271,8 @@ tests/
 
 **OpenAIConverter (10+ tests):**
 - Basic conversion -> correct structure
-- Module ID normalization: `image.resize` -> `image__resize`
-- Denormalization: `image__resize` -> `image.resize`
+- Module ID normalization: `image.resize` -> `image-resize`
+- Denormalization: `image-resize` -> `image.resize`
 - embed_annotations=False -> no suffix
 - embed_annotations=True -> suffix with non-default values only
 - strict=True -> additionalProperties false, all required, optionals nullable
@@ -2447,7 +2507,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "apcore>=0.2.0,<1.0",
+    "apcore>=0.5.0,<1.0",
     "mcp>=1.0.0,<2.0",
 ]
 
@@ -2536,10 +2596,10 @@ show_missing = true
 
 | apcore-python Version | apcore-mcp Support | Notes                                    |
 |-----------------------|-------------------|------------------------------------------|
-| < 0.2.0               | Not supported     | Missing Registry event system, ModuleAnnotations |
-| 0.2.0                 | Full support      | Current version (verified in source: `__version__ = "0.2.1"`) |
-| 0.2.x                 | Full support      | Patch versions (compatible)              |
-| 0.3.x - 0.9.x         | Expected support  | Minor versions should be backward compatible |
+| < 0.5.0               | Not supported     | Missing Registry event system, ModuleAnnotations |
+| 0.5.0                 | Full support      | Current version (verified in source: `__version__ = "0.5.0"`) |
+| 0.5.x                 | Full support      | Patch versions (compatible)              |
+| 0.6.x - 0.9.x         | Expected support  | Minor versions should be backward compatible |
 | >= 1.0.0              | Requires testing  | Major version may introduce breaking changes |
 
 **Key API contract with apcore-python (verified in source code):**
@@ -2607,7 +2667,7 @@ show_missing = true
 
 | ID    | Question                                                                                     | Impact                          | Decision By    | Follow-up Plan                                      |
 |-------|----------------------------------------------------------------------------------------------|---------------------------------|----------------|------------------------------------------------------|
-| OQ-01 | Should `to_openai_tools()` normalize module IDs with double underscores (`__`) or single dashes (`-`)? Both are valid in OpenAI function names. | Affects all OpenAI tool names   | Phase 1 start  | Owner: Tech Lead. Resolve by checking OpenAI convention examples. Current recommendation: `__` (double underscore). |
+| OQ-01 | Should `to_openai_tools()` normalize module IDs with double underscores (`__`) or single dashes (`-`)? Both are valid in OpenAI function names. | Affects all OpenAI tool names   | Phase 1 start  | Owner: Tech Lead. Resolve by checking OpenAI convention examples. **Resolved: `-` (hyphen).** |
 | OQ-02 | Should `serve()` provide an `async` variant (`serve_async()`) for embedding in existing async apps? | Affects API surface             | Phase 2        | Owner: Tech Lead. Prototype as `_serve_async()` internal, promote to public if demand exists. |
 | OQ-03 | How should MCP tool list changed notifications work with the low-level Server API? The notification requires an active session context. | Affects F-015 implementation    | Phase 2        | Owner: Implementer. Investigate `Server.request_context` and session notification API. Fallback: clients re-fetch on reconnect. |
 | OQ-04 | Should schemas with intentional `additionalProperties: true` issue a warning or error when `strict=True` is used with `to_openai_tools()`? | Affects strict mode correctness | Phase 2        | Owner: Implementer. Decision: log WARNING but proceed with override. |
@@ -2618,7 +2678,7 @@ show_missing = true
 
 2. **Custom AnnotationMapper:** Domain-specific annotations beyond apcore's five standard ones can be mapped via a custom `AnnotationMapper`.
 
-3. **Pre-configured serve() wrappers:** xxx-apcore projects can create their own `serve_comfyui(registry)` that pre-sets server_name, default transport, and filtering.
+3. **Pre-configured serve() wrappers:** xxx-apcore projects can create their own `serve_comfyui(registry)` that pre-sets name, default transport, and filtering.
 
 4. **Additional converters:** The `converters/` package is designed to host future format converters:
    - `converters/langchain.py` -- LangChain tool format
@@ -2647,7 +2707,7 @@ show_missing = true
 | Term                    | Definition                                                                                      |
 |-------------------------|-------------------------------------------------------------------------------------------------|
 | **apcore**              | Schema-driven module development framework providing Registry, Executor, and schema validation  |
-| **apcore-python**       | Python SDK implementation of apcore (v0.2.1). Source: `/Users/tercel/WorkSpace/aipartnerup/apcore-python/` |
+| **apcore-python**       | Python SDK implementation of apcore (v0.5.0). Source: `/Users/tercel/WorkSpace/aipartnerup/apcore-python/` |
 | **MCP**                 | Model Context Protocol -- Anthropic's open protocol for AI assistant tool integration            |
 | **MCP Server**          | Process exposing tools/resources/prompts to MCP clients via the MCP protocol                    |
 | **MCP Client**          | AI assistant app connecting to MCP Servers (Claude Desktop, Cursor, Windsurf)                   |

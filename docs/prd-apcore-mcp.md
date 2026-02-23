@@ -570,6 +570,8 @@ serve(executor)  # Uses the pre-configured executor
 3. MCP clients are notified of tool list changes (via MCP's tool list changed notification if supported).
 4. The tool list update is thread-safe.
 
+> **Note -- `dynamic` parameter (Reserved for future implementation):** Both Python and TypeScript implementations of `serve()` accept a `dynamic` boolean parameter (default: `False` in Python, `false` in TypeScript). This parameter is intended to control whether the `RegistryListener` is activated for dynamic tool registration. However, in current releases, the parameter is accepted but **not yet wired** to the `RegistryListener` -- dynamic tool list updates based on Registry events are not yet functional. The parameter is reserved for future implementation and should not be relied upon for production use.
+
 **Priority:** P1
 
 ---
@@ -650,7 +652,7 @@ serve(registry, tags=["public"], prefix="api.")
 **User Story:** As a DevOps engineer, I want a health check endpoint for the MCP server, so that I can monitor its availability in production.
 
 **Acceptance Criteria:**
-1. `GET /health` returns HTTP 200 with a JSON body containing `status`, `tools_count`, and `uptime_seconds`.
+1. `GET /health` returns HTTP 200 with a JSON body containing `status`, `module_count`, and `uptime_seconds`.
 2. The endpoint is only available for HTTP-based transports (not stdio).
 3. The endpoint does not require authentication.
 
@@ -675,14 +677,89 @@ serve(registry, tags=["public"], prefix="api.")
 
 ---
 
+#### F-021: Prometheus Metrics Endpoint
+
+**Title:** `/metrics` endpoint for Prometheus scraping
+
+**Description:** When serving over Streamable HTTP or SSE, expose a `/metrics` endpoint that returns Prometheus-format metrics (content type `text/plain; version=0.0.4; charset=utf-8`) when a `MetricsExporter` is configured. Returns HTTP 404 if no metrics exporter is configured.
+
+**Acceptance Criteria:**
+1. `GET /metrics` returns HTTP 200 with Prometheus text format when a `MetricsExporter` is configured.
+2. `GET /metrics` returns HTTP 404 when no `MetricsExporter` is configured.
+3. The endpoint is only available for HTTP-based transports (not stdio).
+
+**Priority:** P2
+
+---
+
+#### F-022: Metrics Collector Parameter
+
+**Title:** `metrics_collector` / `metricsCollector` parameter in `serve()`
+
+**Description:** The `serve()` function accepts an optional `metrics_collector` (Python) / `metricsCollector` (TypeScript) parameter. When provided, the server collects per-tool-call metrics (call counts, error counts, durations) and exposes them via the `/metrics` endpoint (F-021).
+
+**Acceptance Criteria:**
+1. `serve(registry, metrics_collector=collector)` enables metrics collection for all tool calls.
+2. When no `metrics_collector` is provided, metrics collection is disabled and `/metrics` returns 404.
+
+**Priority:** P2
+
+---
+
+#### F-023: Input Validation Parameter
+
+**Title:** `validate_inputs` parameter in `serve()` for pre-execution schema validation
+
+**Description:** The `serve()` function accepts an optional `validate_inputs` boolean parameter (default: `False`). When enabled, the MCP layer performs JSON Schema validation on tool call inputs before routing to the Executor. This provides early validation feedback at the MCP layer, independent of the Executor's own schema validation middleware.
+
+**Acceptance Criteria:**
+1. `serve(registry, validate_inputs=True)` enables pre-execution input validation at the MCP layer.
+2. `serve(registry, validate_inputs=False)` (default) delegates all validation to the Executor pipeline.
+3. Validation errors are returned as MCP error responses with field-level details.
+
+**Priority:** P2
+
+---
+
+#### F-024: Streaming and Progress Support
+
+**Title:** `executor.stream()` for chunked responses with `notifications/progress`
+
+**Description:** Support streaming/progress notifications for long-running tool calls. When a module execution uses the `executor.stream()` interface, the MCP server sends `notifications/progress` messages to the client with incremental updates, enabling real-time feedback for long-running operations.
+
+**Acceptance Criteria:**
+1. Long-running tool calls can emit progress notifications via `notifications/progress`.
+2. The final result is delivered as a standard `CallToolResult` after streaming completes.
+
+**Priority:** P2
+
+---
+
+#### F-025: MCPServer Background Wrapper (Python Only)
+
+**Title:** `MCPServer` class for non-blocking server lifecycle management
+
+**Description:** A Python-only `MCPServer` class that wraps `serve()` in a background thread, providing a non-blocking server lifecycle with `start()`, `stop()`, and `wait()` methods. This is useful for embedding an MCP server inside a larger application without blocking the main thread. TypeScript does not need an equivalent since `serve()` is already async and can be managed with standard async patterns.
+
+**Acceptance Criteria:**
+1. `MCPServer(registry, **serve_kwargs)` creates a server wrapper without starting it.
+2. `server.start()` launches the MCP server in a background thread and returns immediately.
+3. `server.stop()` signals the server to shut down gracefully.
+4. `server.wait()` blocks until the server has fully stopped.
+5. This class is Python-only; TypeScript relies on async `serve()` directly.
+
+**Priority:** P2
+
+---
+
 **Feature Count Summary:**
 
 | Priority | Count | Features |
 |----------|-------|----------|
 | P0       | 9     | F-001 through F-009 |
 | P1       | 7     | F-010 through F-016 |
-| P2       | 4     | F-017 through F-020 |
-| **Total**| **20**|                      |
+| P2       | 9     | F-017 through F-025 |
+| **Total**| **25**|                      |
 
 ---
 

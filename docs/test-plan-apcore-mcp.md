@@ -1369,7 +1369,7 @@ show_missing = true
 - **Steps:**
   1. Call `converter.convert_descriptor(descriptor)`.
   2. Assert result has `"type": "function"`.
-  3. Assert `result["function"]["name"]` equals `"image__resize"` (dots normalized).
+  3. Assert `result["function"]["name"]` equals `"image-resize"` (dots normalized).
   4. Assert `result["function"]["description"]` equals the original description.
   5. Assert `result["function"]["parameters"]` equals the input_schema.
 - **Expected Result:**
@@ -1377,7 +1377,7 @@ show_missing = true
   {
       "type": "function",
       "function": {
-          "name": "image__resize",
+          "name": "image-resize",
           "description": "Resize an image to the specified dimensions",
           "parameters": {"type": "object", "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}}, "required": ["width", "height"]}
       }
@@ -1387,7 +1387,7 @@ show_missing = true
 
 ---
 
-#### TC-OPENAI-002: Module ID normalization replaces dots with double underscores
+#### TC-OPENAI-002: Module ID normalization replaces dots with hyphens
 
 - **Priority:** P0
 - **Type:** Unit
@@ -1395,16 +1395,16 @@ show_missing = true
 - **Test Data:**
   ```python
   test_cases = [
-      ("image.resize", "image__resize"),
-      ("comfyui.workflow.execute", "comfyui__workflow__execute"),
+      ("image.resize", "image-resize"),
+      ("comfyui.workflow.execute", "comfyui-workflow-execute"),
       ("simple", "simple"),
-      ("a.b.c.d.e", "a__b__c__d__e"),
+      ("a.b.c.d.e", "a-b-c-d-e"),
   ]
   ```
 - **Steps:**
   1. For each (input, expected), call `normalizer.normalize(input)`.
   2. Assert result equals expected.
-- **Expected Result:** All dot-separated module IDs converted to double-underscore format. IDs without dots are unchanged.
+- **Expected Result:** All dot-separated module IDs converted to hyphen format. IDs without dots are unchanged.
 - **Traceability:** F-008
 
 ---
@@ -1417,15 +1417,15 @@ show_missing = true
 - **Test Data:**
   ```python
   test_cases = [
-      ("image__resize", "image.resize"),
-      ("comfyui__workflow__execute", "comfyui.workflow.execute"),
+      ("image-resize", "image.resize"),
+      ("comfyui-workflow-execute", "comfyui.workflow.execute"),
       ("simple", "simple"),
   ]
   ```
 - **Steps:**
   1. For each (input, expected), call `normalizer.denormalize(input)`.
   2. Assert result equals expected.
-- **Expected Result:** Double underscores converted back to dots.
+- **Expected Result:** Hyphens converted back to dots.
 - **Traceability:** F-008
 
 ---
@@ -1559,7 +1559,7 @@ show_missing = true
 - **Test Data:** `tags=["image"]`
 - **Steps:**
   1. Call `converter.convert_registry(registry, tags=["image"])`.
-  2. Assert result has 1 item with name `"image__resize"`.
+  2. Assert result has 1 item with name `"image-resize"`.
 - **Expected Result:** Single tool in list.
 - **Traceability:** F-017
 
@@ -1574,7 +1574,7 @@ show_missing = true
 - **Steps:**
   1. Call `converter.convert_registry(registry, prefix="comfyui.")`.
   2. Assert result has 1 item.
-- **Expected Result:** Single tool in list with name `"comfyui__workflow"`.
+- **Expected Result:** Single tool in list with name `"comfyui-workflow"`.
 - **Traceability:** F-017
 
 ---
@@ -1867,7 +1867,7 @@ show_missing = true
 - **Test Data:** `args = ["--extensions-dir", "/tmp/ext", "--name", "my-server", "--version", "3.0.0"]`
 - **Steps:**
   1. Run CLI main() with args.
-  2. Assert `serve()` called with `server_name="my-server"` and `server_version="3.0.0"`.
+  2. Assert `serve()` called with `name="my-server"` and `version="3.0.0"`.
 - **Expected Result:** Custom server name and version passed to serve().
 - **Traceability:** F-009
 
@@ -2774,7 +2774,7 @@ EXPECTED_MCP_TOOL = types.Tool(
 EXPECTED_OPENAI_TOOL = {
     "type": "function",
     "function": {
-        "name": "image__resize",
+        "name": "image-resize",
         "description": "Resize an image to the specified dimensions",
         "parameters": {
             "type": "object",
@@ -2796,7 +2796,7 @@ EXPECTED_OPENAI_TOOL = {
 EXPECTED_OPENAI_STRICT_TOOL = {
     "type": "function",
     "function": {
-        "name": "image__resize",
+        "name": "image-resize",
         "description": "Resize an image to the specified dimensions",
         "parameters": {
             "type": "object",

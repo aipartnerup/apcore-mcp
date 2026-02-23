@@ -41,9 +41,11 @@
 
 ### 1.1 Purpose
 
-This Software Requirements Specification defines the complete functional and non-functional requirements for **apcore-mcp**, an independent Python adapter package that automatically bridges any apcore Module Registry into both a fully functional MCP (Model Context Protocol) Server and OpenAI-compatible tool definitions. This document formalizes all 20 features from the upstream PRD (F-001 through F-020) into traceable, testable requirements organized by component module. It serves as the authoritative reference for implementation, testing, and acceptance of apcore-mcp v0.1.0.
+This Software Requirements Specification defines the complete functional and non-functional requirements for **apcore-mcp**, an independent Python adapter package that automatically bridges any apcore Module Registry into both a fully functional MCP (Model Context Protocol) Server and OpenAI-compatible tool definitions. This document formalizes 20 of 25 features from the upstream PRD (F-001 through F-020) into traceable, testable requirements organized by component module. P2 features F-021 through F-025 are deferred to a future SRS revision. It serves as the authoritative reference for implementation, testing, and acceptance of apcore-mcp v0.1.0.
 
 The intended audience includes software engineers implementing apcore-mcp, QA engineers writing test plans, and project stakeholders evaluating feature completeness.
+
+> **Note:** FR-STREAM-001, FR-EXT-001, FR-EXT-002, and FR-EXT-003 are defined in this document but not yet included in the traceability matrix (Section 9). The effective FR count is 82.
 
 ### 1.2 Scope
 
@@ -80,7 +82,7 @@ apcore-mcp does NOT reimplement the MCP protocol (it uses the official `mcp` Pyt
 | **SSE** | Server-Sent Events -- a deprecated MCP transport supported for backward compatibility. |
 | **ACL** | Access Control List -- apcore's built-in mechanism for controlling which callers can invoke which modules. |
 | **$ref inlining** | The process of resolving JSON Schema `$ref` references by substituting the referenced definition in-place and removing the `$defs` section. |
-| **Module ID normalization** | Converting apcore module IDs (dot-notation, e.g., `image.resize`) to OpenAI-compatible function names (e.g., `image__resize`) by replacing `.` with `__`. |
+| **Module ID normalization** | Converting apcore module IDs (dot-notation, e.g., `image.resize`) to OpenAI-compatible function names (e.g., `image-resize`) by replacing `.` with `-`. |
 | **xxx-apcore** | Convention for apcore adapter projects targeting specific domains: `comfyui-apcore`, `vnpy-apcore`, `blender-apcore`, etc. |
 | **CallToolResult** | MCP SDK type representing the result of a tool call, containing `content` (list of content items) and `isError` (boolean). |
 | **TextContent** | MCP SDK type for text-based content items within a CallToolResult. |
@@ -1031,26 +1033,26 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 | Field | Value |
 |-------|-------|
 | **ID** | FR-SERVER-004 |
-| **Title** | serve() accepts server_name and server_version parameters |
+| **Title** | serve() accepts name and version parameters |
 | **Priority** | P0 |
 | **Traces to** | F-005 |
 
-**Description:** The `serve()` function shall accept optional `server_name` (str, default `"apcore-mcp"`) and `server_version` (str or None, default None) parameters. These values shall be reported to MCP clients during protocol initialization. When `server_version` is `None`, the package version from `apcore_mcp.__version__` shall be used.
+**Description:** The `serve()` function shall accept optional `name` (str, default `"apcore-mcp"`) and `version` (str or None, default None) parameters. These values shall be reported to MCP clients during protocol initialization. When `version` is `None`, the package version from `apcore_mcp.__version__` shall be used.
 
-**Input/Trigger:** `serve(registry, server_name="my-tools", server_version="2.0.0")`.
+**Input/Trigger:** `serve(registry, name="my-tools", version="2.0.0")`.
 
 **Expected Output:** The MCP Server reports `name="my-tools"` and `version="2.0.0"` during client initialization.
 
 **Boundary Conditions:**
-- `server_name` max length: 255 characters.
-- `server_name` minimum: 1 character (non-empty).
-- `server_version=None`: Uses `apcore_mcp.__version__`.
-- `server_version=""`: Raises `ValueError`.
+- `name` max length: 255 characters.
+- `name` minimum: 1 character (non-empty).
+- `version=None`: Uses `apcore_mcp.__version__`.
+- `version=""`: Raises `ValueError`.
 
 **Error Conditions:**
-- Empty `server_name` (`""`): Raise `ValueError` with message "server_name must not be empty".
-- `server_name` exceeding 255 characters: Raise `ValueError` with message "server_name must not exceed 255 characters".
-- Empty `server_version` (`""`): Raise `ValueError` with message "server_version must not be empty".
+- Empty `name` (`""`): Raise `ValueError` with message "name must not be empty".
+- `name` exceeding 255 characters: Raise `ValueError` with message "name must not exceed 255 characters".
+- Empty `version` (`""`): Raise `ValueError` with message "version must not be empty".
 
 ---
 
@@ -1131,7 +1133,7 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 |-------|-------|
 | **ID** | FR-SERVER-008 |
 | **Title** | serve() validates tags filter parameter |
-| **Priority** | P2 |
+| **Priority** | P1 -- Implemented |
 | **Traces to** | F-018 |
 
 **Description:** The `serve()` function shall accept an optional `tags` parameter (`list[str] | None`, default `None`). When provided, only modules with ALL specified tags shall be exposed as MCP tools. Each tag string must be non-empty.
@@ -1156,7 +1158,7 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 |-------|-------|
 | **ID** | FR-SERVER-009 |
 | **Title** | serve() validates prefix filter parameter |
-| **Priority** | P2 |
+| **Priority** | P1 -- Implemented |
 | **Traces to** | F-018 |
 
 **Description:** The `serve()` function shall accept an optional `prefix` parameter (`str | None`, default `None`). When provided, only modules whose `module_id` starts with the prefix shall be exposed as MCP tools.
@@ -1181,10 +1183,10 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 |-------|-------|
 | **ID** | FR-SERVER-010 |
 | **Title** | serve() accepts log_level parameter |
-| **Priority** | P1 |
+| **Priority** | P1 -- Implemented |
 | **Traces to** | F-016 |
 
-**Description:** The `serve()` function shall accept an optional `log_level` parameter (`str | None`, default `None`). When provided, it shall set the log level of the `apcore_mcp` logger to the specified level.
+**Description:** The `serve()` function shall accept an optional `log_level` parameter (`str | None`, default `None`). When provided, it shall configure logging via `logging.basicConfig(level=...)` to set the log level. Log level configuration is also available via the CLI `--log-level` option.
 
 **Input/Trigger:** `serve(registry, log_level="DEBUG")`.
 
@@ -1394,21 +1396,21 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 | Field | Value |
 |-------|-------|
 | **ID** | FR-OPENAI-002 |
-| **Title** | Replace dots with double underscores in OpenAI function names |
+| **Title** | Replace dots with hyphens in OpenAI function names |
 | **Priority** | P0 |
 | **Traces to** | F-008 |
 
-**Description:** The `ModuleIDNormalizer.normalize()` method shall replace all `.` (dot) characters in apcore module IDs with `__` (double underscore) to comply with OpenAI function name constraints (`^[a-zA-Z0-9_-]+$`). The `denormalize()` method shall reverse this transformation.
+**Description:** The `ModuleIDNormalizer.normalize()` method shall replace all `.` (dot) characters in apcore module IDs with `-` (hyphen) to comply with OpenAI function name constraints (`^[a-zA-Z0-9_-]+$`). The `denormalize()` method shall reverse this transformation.
 
 **Input/Trigger:** `normalize("image.resize")`.
 
-**Expected Output:** `"image__resize"`.
+**Expected Output:** `"image-resize"`.
 
 **Boundary Conditions:**
 - Module ID with no dots (e.g., `"simple"`): Return unchanged.
-- Module ID with multiple dots (e.g., `"comfyui.workflow.execute"`): Return `"comfyui__workflow__execute"`.
-- Module ID with existing underscores (e.g., `"my_module.resize"`): Return `"my_module__resize"`.
-- Module ID with hyphens (e.g., `"my-module.resize"`): Reject with validation error. Hyphens are prohibited in canonical module IDs per PROTOCOL_SPEC (reserved for dot→hyphen normalization).
+- Module ID with multiple dots (e.g., `"comfyui.workflow.execute"`): Return `"comfyui-workflow-execute"`.
+- Module ID with existing underscores (e.g., `"my_module.resize"`): Return `"my_module-resize"`.
+- Module ID with hyphens (e.g., `"my-module.resize"`): Reject with validation error. Hyphens are prohibited in canonical module IDs per PROTOCOL_SPEC (reserved for dot-to-hyphen normalization).
 
 **Error Conditions:**
 - Module ID containing hyphens: Raise validation error (hyphens are reserved for MCP/OpenAI tool name normalization).
@@ -2038,16 +2040,16 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 
 **Description:** When the MCP Server runs with Streamable HTTP or SSE transport, a `GET /health` endpoint shall be available that returns HTTP 200 with a JSON body containing:
 - `"status"`: string, always `"ok"`.
-- `"tools_count"`: integer, number of currently registered tools.
+- `"module_count"`: integer, number of currently registered tools.
 - `"uptime_seconds"`: float, seconds since server start.
 
 **Input/Trigger:** HTTP `GET /health` request.
 
-**Expected Output:** HTTP 200, `Content-Type: application/json`, body: `{"status": "ok", "tools_count": 5, "uptime_seconds": 123.45}`.
+**Expected Output:** HTTP 200, `Content-Type: application/json`, body: `{"status": "ok", "module_count": 5, "uptime_seconds": 123.45}`.
 
 **Boundary Conditions:**
 - Server just started (< 1 second uptime): `uptime_seconds` is a small positive float.
-- Zero tools registered: `tools_count=0`.
+- Zero tools registered: `module_count=0`.
 - Transport is stdio: Endpoint not available (not applicable).
 
 **Error Conditions:** None. The health endpoint shall always return HTTP 200 if the server is running.
@@ -2155,6 +2157,119 @@ When ANY condition is not met, fall back to normal atomic `executor.call()`.
 - Executor has no `stream()`: Normal atomic execution.
 - Stream yields zero chunks: Return empty accumulated result `{}`.
 - Stream throws mid-iteration: Map error via `ErrorMapper`, return error result.
+
+---
+
+### 3.14 FR-EXT: Extension Helpers
+
+Extension helpers provide convenient wrappers for MCP-specific protocol features that module implementations can use during tool execution. These helpers abstract MCP protocol details so that module code does not need to interact with the MCP SDK directly.
+
+---
+
+#### FR-EXT-001: report_progress() sends MCP progress notifications
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-EXT-001 |
+| **Title** | report_progress() sends MCP progress notifications to the client |
+| **Priority** | P1 |
+| **Traces to** | F-005 |
+
+**Description:** The `report_progress(context, progress, total=None, message=None)` helper function shall send an MCP `notifications/progress` notification to the connected client. The `context` parameter is the MCP server request context (made available to module execution via the apcore context pipeline). The `progress` parameter is a numeric value indicating current progress. The optional `total` parameter indicates the total expected value (enabling percentage calculation). The optional `message` parameter provides a human-readable progress description.
+
+This function is a no-op (silently does nothing) when invoked outside an MCP context (e.g., when the module is called directly via `Executor.call()` without an MCP server).
+
+**Signature:**
+```python
+async def report_progress(
+    context: Any,
+    progress: float,
+    total: float | None = None,
+    message: str | None = None,
+) -> None: ...
+```
+
+**Input/Trigger:** Module implementation calls `await report_progress(context, 50, total=100, message="Processing image...")` during execution.
+
+**Expected Output:** MCP `notifications/progress` notification sent to the client with `progress=50`, `total=100`, and `message="Processing image..."`.
+
+**Boundary Conditions:**
+- `total=None`: Progress notification sent without total (client cannot compute percentage).
+- `message=None`: Progress notification sent without message text.
+- No active MCP context (e.g., direct Executor call): No-op, no error raised.
+- `progress` > `total`: Allowed (client may clamp or ignore).
+
+**Error Conditions:**
+- Silently no-ops when context has no MCP progress callback. No validation on progress value.
+
+---
+
+#### FR-EXT-002: elicit() solicits user input via MCP elicitation
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-EXT-002 |
+| **Title** | elicit() solicits user input from the MCP client |
+| **Priority** | P1 |
+| **Traces to** | F-005 |
+
+**Description:** The `elicit(context, message, requested_schema=None)` helper function shall send an MCP elicitation request to the connected client, soliciting user input. The `context` parameter is the MCP server request context. The `message` parameter is a human-readable prompt displayed to the user. The optional `requested_schema` parameter is a JSON Schema dict describing the expected shape of the user's response.
+
+The function returns the client's elicitation response. If the MCP client does not support elicitation or the user declines, the function returns `None`.
+
+Returns `None` when called outside MCP context (graceful no-op).
+
+**Signature:**
+```python
+async def elicit(
+    context: Any,
+    message: str,
+    requested_schema: dict[str, Any] | None = None,
+) -> Any | None: ...
+```
+
+**Input/Trigger:** Module implementation calls `await elicit(context, "Please confirm deletion", {"type": "object", "properties": {"confirmed": {"type": "boolean"}}})` during execution.
+
+**Expected Output:** MCP elicitation request sent to client. Returns the user's response dict (e.g., `{"confirmed": True}`) or `None` if declined/unsupported.
+
+**Boundary Conditions:**
+- `requested_schema=None`: Client presents a free-form input prompt.
+- Client does not support elicitation: Returns `None`.
+- User declines or cancels: Returns `None`.
+- Empty `message` (`""`): Allowed. No validation is performed on the message parameter.
+
+**Error Conditions:**
+- Called outside MCP context: Returns `None` (graceful no-op).
+
+---
+
+#### FR-EXT-003: MCP_PROGRESS_KEY and MCP_ELICIT_KEY constants
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-EXT-003 |
+| **Title** | Module-level constants for MCP context keys |
+| **Priority** | P1 |
+| **Traces to** | F-005 |
+
+**Description:** The `apcore_mcp` package shall export two string constants used as keys for storing MCP protocol objects in the apcore execution context:
+
+- `MCP_PROGRESS_KEY` -- The context key under which the MCP progress reporting capability is stored. Used internally by `report_progress()` to retrieve the progress notification sender from the execution context.
+- `MCP_ELICIT_KEY` -- The context key under which the MCP elicitation capability is stored. Used internally by `elicit()` to retrieve the elicitation sender from the execution context.
+
+These constants allow advanced users to access the underlying MCP protocol objects directly when the helper functions do not cover their use case, while providing a stable, documented key name.
+
+**Values:**
+```python
+MCP_PROGRESS_KEY: str = "_mcp_progress"
+MCP_ELICIT_KEY: str = "_mcp_elicit"
+```
+
+**Boundary Conditions:**
+- Constants are module-level and immutable (plain `str`).
+- Importing these constants does not require an active MCP server.
+
+**Error Conditions:** None.
 
 ---
 
@@ -2496,7 +2611,7 @@ When ANY condition is not met, fall back to normal atomic `executor.call()`.
 **Alternative Flows:**
 - **A1: HTTP transport**: At step 2, developer calls `serve(registry, transport="streamable-http", port=9000)`. Steps 9-10 use Streamable HTTP transport instead of stdio.
 - **A2: Executor passthrough**: At step 2, developer passes an `Executor` instance. Step 4 is skipped; the provided Executor is used directly.
-- **A3: Custom server name**: At step 2, developer passes `server_name="my-tools"`. Step 7 uses the custom name.
+- **A3: Custom server name**: At step 2, developer passes `name="my-tools"`. Step 7 uses the custom name.
 
 **Exception Flows:**
 - **E1: Invalid parameter type**: At step 3, the parameter is neither `Registry` nor `Executor`. System raises `TypeError`. Flow terminates.
@@ -2633,7 +2748,7 @@ When ANY condition is not met, fall back to normal atomic `executor.call()`.
 2. System validates the parameter is a `Registry` or `Executor`.
 3. System iterates over all modules via `registry.list()`.
 4. For each module, system obtains `ModuleDescriptor` and converts to OpenAI dict.
-5. Module ID is normalized (dots replaced with `__`).
+5. Module ID is normalized (dots replaced with `-`).
 6. Schema is converted (same $ref inlining as MCP path).
 7. System returns `list[dict]`.
 8. Developer passes result to `openai.chat.completions.create(tools=tools)`.
@@ -2798,7 +2913,7 @@ When ANY condition is not met, fall back to normal atomic `executor.call()`.
 | Field | Type | Source | Description |
 |-------|------|--------|-------------|
 | `type` | `str` | Constant | Always `"function"` |
-| `function.name` | `str` | `ModuleDescriptor.module_id` via ModuleIDNormalizer | Normalized module ID (dots replaced with `__`) |
+| `function.name` | `str` | `ModuleDescriptor.module_id` via ModuleIDNormalizer | Normalized module ID (dots replaced with `-`) |
 | `function.description` | `str` | `ModuleDescriptor.description` (+ optional annotation suffix) | Tool description, optionally with annotation metadata appended |
 | `function.parameters` | `dict[str, Any]` | `ModuleDescriptor.input_schema` after $ref inlining | JSON Schema for function parameters |
 | `function.strict` | `bool` | Only present when `strict=True` | OpenAI strict mode flag (only included when enabled) |
@@ -2837,7 +2952,7 @@ When ANY condition is not met, fall back to normal atomic `executor.call()`.
 | Field | Type | Description |
 |-------|------|-------------|
 | `status` | `str` | Always `"ok"` |
-| `tools_count` | `int` | Number of currently registered tools |
+| `module_count` | `int` | Number of currently registered tools |
 | `uptime_seconds` | `float` | Seconds since server start |
 
 ### 7.7 CLI Argument Specification
@@ -2861,8 +2976,12 @@ When ANY condition is not met, fall back to normal atomic `executor.call()`.
 | `transport` | `str` | No | `"stdio"` | One of: `"stdio"`, `"streamable-http"`, `"sse"` (case-insensitive) | Transport protocol |
 | `host` | `str` | No | `"127.0.0.1"` | Non-empty | Bind address (ignored for stdio) |
 | `port` | `int` | No | `8000` | 1-65535 | Bind port (ignored for stdio) |
-| `server_name` | `str` | No | `"apcore-mcp"` | Non-empty, max 255 chars | Server name for MCP clients |
-| `server_version` | `str \| None` | No | `None` | Non-empty if provided | Server version (None = package version) |
+| `name` | `str` | No | `"apcore-mcp"` | Non-empty, max 255 chars | Server name for MCP clients |
+| `version` | `str \| None` | No | `None` | Non-empty if provided | Server version (None = package version) |
+| `on_startup` | `Callable[[], None] \| None` | No | `None` | Must be callable or None | Optional async callback invoked after server starts |
+| `on_shutdown` | `Callable[[], None] \| None` | No | `None` | Must be callable or None | Optional async callback invoked before server stops |
+| `dynamic` | `bool` | No | `False` | N/A | Enable dynamic module discovery at runtime |
+| `validate_inputs` | `bool` | No | `False` | N/A | Enable input schema validation |
 | `tags` | `list[str] \| None` | No | `None` | Each tag non-empty | Tag filter for module selection |
 | `prefix` | `str \| None` | No | `None` | Non-empty if provided | Prefix filter for module selection |
 | `log_level` | `str \| None` | No | `None` | One of: `"DEBUG"`, `"INFO"`, `"WARNING"`, `"ERROR"` | Log level for apcore_mcp logger |
@@ -2895,11 +3014,15 @@ def serve(
     transport: str = "stdio",
     host: str = "127.0.0.1",
     port: int = 8000,
-    server_name: str = "apcore-mcp",
-    server_version: str | None = None,
+    name: str = "apcore-mcp",
+    version: str | None = None,
+    on_startup: Callable[[], None] | None = None,
+    on_shutdown: Callable[[], None] | None = None,
     tags: list[str] | None = None,
     prefix: str | None = None,
     log_level: str | None = None,
+    dynamic: bool = False,
+    validate_inputs: bool = False,
 ) -> None: ...
 ```
 
@@ -2926,6 +3049,52 @@ def to_openai_tools(
 **Behavior:** Pure function. No side effects. Returns list of dicts.
 
 **Exceptions:** `TypeError`, `ValueError`.
+
+#### 8.1.3 report_progress() Function
+
+**Module:** `apcore_mcp`
+
+**Signature:**
+```python
+async def report_progress(
+    context: Any,
+    progress: float,
+    total: float | None = None,
+    message: str | None = None,
+) -> None: ...
+```
+
+**Behavior:** Sends an MCP `notifications/progress` notification. Silently no-ops when context has no MCP progress callback. No validation on progress value.
+
+**Exceptions:** None.
+
+#### 8.1.4 elicit() Function
+
+**Module:** `apcore_mcp`
+
+**Signature:**
+```python
+async def elicit(
+    context: Any,
+    message: str,
+    requested_schema: dict[str, Any] | None = None,
+) -> Any | None: ...
+```
+
+**Behavior:** Sends an MCP elicitation request and returns the user's response, or `None` if declined/unsupported.
+
+**Exceptions:** None. Returns `None` when called outside MCP context (graceful no-op).
+
+#### 8.1.5 Extension Helper Constants
+
+**Module:** `apcore_mcp`
+
+```python
+MCP_PROGRESS_KEY: str = "_mcp_progress"
+MCP_ELICIT_KEY: str = "_mcp_elicit"
+```
+
+**Behavior:** Module-level string constants. No side effects on import.
 
 ### 8.2 CLI Interface
 
