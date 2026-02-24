@@ -19,7 +19,7 @@
 
 This document defines the comprehensive test plan and test cases for **apcore-mcp**, the automatic MCP Server and OpenAI Tools Bridge for the apcore ecosystem. As a greenfield project developed under TDD strict mode, this test plan establishes the testing standard before any implementation code is written. Every test case defined here will be implemented as executable pytest code prior to the corresponding production code.
 
-The scope covers all 20 PRD features (F-001 through F-020) across 9 architectural components: Schema Converter, Annotation Mapper, Execution Router, Error Mapper, MCP Server Factory, OpenAI Converter, Transport Manager, CLI Module, and Dynamic Registry Listener. Testing spans five levels: unit, integration, end-to-end, performance, and security.
+The scope covers 21 PRD features (F-001 through F-020, F-026) across 10 architectural components: Schema Converter, Annotation Mapper, Execution Router, Error Mapper, MCP Server Factory, OpenAI Converter, Transport Manager, CLI Module, Dynamic Registry Listener, and MCP Tool Inspector. Testing spans five levels: unit, integration, end-to-end, performance, and security.
 
 ### 1.2 Test Objectives
 
@@ -181,6 +181,7 @@ show_missing = true
 | F-018       | serve() Module Filtering           | P2       | TC-SERVER-007, TC-SERVER-008                                     |
 | F-019       | Health Check Endpoint              | P2       | TC-E2E-004                                                       |
 | F-020       | MCP Resource Exposure              | P2       | TC-E2E-005                                                       |
+| F-026       | MCP Tool Inspector                 | P2       | TC-INSPECTOR-001 through TC-INSPECTOR-008                        |
 
 ---
 
@@ -2317,6 +2318,128 @@ show_missing = true
   5. Assert server logs contain warning about no modules.
 - **Expected Result:** Server starts successfully with 0 tools and logs a warning.
 - **Traceability:** F-005 (AC7), F-009 (AC6)
+
+---
+
+## 7b. MCP Tool Inspector Test Cases (TC-INSPECTOR-xxx)
+
+**Test File:** `tests/inspector/test_inspector.py`
+
+---
+
+#### TC-INSPECTOR-001: Inspector UI served at inspector_prefix when enabled
+
+- **Priority:** P2
+- **Type:** Integration
+- **Preconditions:** HTTP server started with `explorer=True`, 2 registered tools
+- **Steps:**
+  1. Start server with `serve(registry, transport="streamable-http", explorer=True)`.
+  2. `GET /inspector/` -- assert HTTP 200 with `Content-Type: text/html`.
+  3. Assert response body contains `<html` and tool-related JavaScript.
+- **Expected Result:** Inspector HTML page is served at `/inspector/`.
+- **Traceability:** F-026 (AC1, AC2), FR-INSPECTOR-001
+
+---
+
+#### TC-INSPECTOR-002: Inspector disabled by default
+
+- **Priority:** P2
+- **Type:** Integration
+- **Preconditions:** HTTP server started without `explorer` parameter
+- **Steps:**
+  1. Start server with `serve(registry, transport="streamable-http")`.
+  2. `GET /inspector/` -- assert HTTP 404 or not mounted.
+  3. `GET /inspector/tools` -- assert HTTP 404.
+- **Expected Result:** Inspector endpoints are not available when disabled.
+- **Traceability:** F-026 (AC8), FR-INSPECTOR-001
+
+---
+
+#### TC-INSPECTOR-003: GET /inspector/tools returns tool list JSON
+
+- **Priority:** P2
+- **Type:** Integration
+- **Preconditions:** HTTP server with `explorer=True`, 3 registered tools with annotations
+- **Steps:**
+  1. `GET /inspector/tools` -- assert HTTP 200, `Content-Type: application/json`.
+  2. Assert response is a JSON array with 3 elements.
+  3. Assert each element has `name`, `description`, `annotations` keys.
+  4. Assert annotation values match the registered module annotations.
+- **Expected Result:** Tool list JSON reflects all registered tools with correct annotations.
+- **Traceability:** F-026 (AC3), FR-INSPECTOR-002
+
+---
+
+#### TC-INSPECTOR-004: GET /inspector/tools/<name> returns tool detail
+
+- **Priority:** P2
+- **Type:** Integration
+- **Preconditions:** HTTP server with `explorer=True`, tool `image-resize` registered
+- **Steps:**
+  1. `GET /inspector/tools/image-resize` -- assert HTTP 200.
+  2. Assert response contains `name`, `description`, `annotations`, `inputSchema`.
+  3. Assert `inputSchema` matches the registered module's input_schema.
+  4. `GET /inspector/tools/nonexistent` -- assert HTTP 404.
+- **Expected Result:** Tool detail includes full schema; 404 for unknown tools.
+- **Traceability:** F-026 (AC4), FR-INSPECTOR-003
+
+---
+
+#### TC-INSPECTOR-005: POST /inspector/tools/<name>/call executes tool
+
+- **Priority:** P2
+- **Type:** Integration
+- **Preconditions:** HTTP server with `explorer=True, allow_execute=True`, mock Executor
+- **Steps:**
+  1. `POST /inspector/tools/image-resize/call` with JSON body `{"width": 800}`.
+  2. Assert HTTP 200, response contains `{"output": ...}`.
+  3. Assert mock Executor was called with correct tool name and inputs.
+- **Expected Result:** Tool executed via Executor pipeline, result returned as JSON.
+- **Traceability:** F-026 (AC5), FR-INSPECTOR-004
+
+---
+
+#### TC-INSPECTOR-006: POST /inspector/tools/<name>/call returns 403 when execution disabled
+
+- **Priority:** P2
+- **Type:** Integration
+- **Preconditions:** HTTP server with `explorer=True, allow_execute=False`
+- **Steps:**
+  1. `POST /inspector/tools/image-resize/call` with JSON body `{"width": 800}`.
+  2. Assert HTTP 403.
+  3. Assert response contains error message about execution being disabled.
+- **Expected Result:** Execution blocked with 403 when allow_execute is False.
+- **Traceability:** F-026 (AC6), FR-INSPECTOR-004
+
+---
+
+#### TC-INSPECTOR-007: Inspector ignored for stdio transport
+
+- **Priority:** P2
+- **Type:** Unit
+- **Preconditions:** Server configured with `transport="stdio", explorer=True`
+- **Steps:**
+  1. Start server with `serve(registry, transport="stdio", explorer=True)`.
+  2. Assert no HTTP endpoints are mounted.
+  3. Assert server functions normally via stdio.
+- **Expected Result:** Inspector silently ignored for non-HTTP transports.
+- **Traceability:** F-026 (AC9), FR-INSPECTOR-001
+
+---
+
+#### TC-INSPECTOR-008: Custom inspector_prefix mounts endpoints at custom path
+
+- **Priority:** P2
+- **Type:** Integration
+- **Preconditions:** HTTP server started with `explorer=True, inspector_prefix="/custom"`
+- **Steps:**
+  1. Start server with `serve(registry, transport="streamable-http", explorer=True, inspector_prefix="/custom")`.
+  2. `GET /custom/` -- assert HTTP 200 with `Content-Type: text/html`.
+  3. `GET /custom/tools` -- assert HTTP 200, `Content-Type: application/json`.
+  4. `GET /custom/tools/image-resize` -- assert HTTP 200.
+  5. `GET /inspector/` -- assert HTTP 404 (default prefix not mounted).
+- **Expected Result:** All Inspector endpoints are mounted under the custom prefix `/custom/` instead of the default `/inspector/`.
+- **Traceability:** F-026 (AC11), FR-INSPECTOR-006
 
 ---
 
