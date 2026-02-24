@@ -2392,7 +2392,7 @@ show_missing = true
 - **Preconditions:** HTTP server with `explorer=True, allow_execute=True`, mock Executor
 - **Steps:**
   1. `POST /inspector/tools/image-resize/call` with JSON body `{"width": 800}`.
-  2. Assert HTTP 200, response contains `{"output": ...}`.
+  2. Assert HTTP 200, response contains `{"result": ...}`.
   3. Assert mock Executor was called with correct tool name and inputs.
 - **Expected Result:** Tool executed via Executor pipeline, result returned as JSON.
 - **Traceability:** F-026 (AC5), FR-INSPECTOR-004

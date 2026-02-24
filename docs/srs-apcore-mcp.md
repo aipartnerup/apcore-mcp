@@ -2355,7 +2355,7 @@ The MCP Tool Inspector is an optional, built-in browser UI that allows developer
 
 **Expected Output (success):**
 ```json
-{"output": {"width": 800, "height": 600}}
+{"result": {"width": 800, "height": 600}}
 ```
 
 **Error Conditions:**
