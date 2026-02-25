@@ -750,28 +750,28 @@ serve(registry, tags=["public"], prefix="api.")
 
 **Priority:** P2
 
-#### F-026: MCP Tool Inspector (Optional Explorer UI)
+#### F-026: MCP Tool Explorer (Optional Explorer UI)
 
 **Title:** Built-in browser UI for inspecting and testing MCP tools
 
-**Description:** An optional, lightweight web UI served alongside the MCP HTTP server that allows developers to browse registered tools, inspect their schemas, and execute them interactively. This is the MCP-layer equivalent of Swagger UI -- it shows exactly what AI clients see after protocol conversion (tool names, input schemas, annotations). The Inspector is disabled by default and only available with HTTP-based transports (Streamable HTTP, SSE). It is **not** a production dashboard; it is a developer debugging aid.
+**Description:** An optional, lightweight web UI served alongside the MCP HTTP server that allows developers to browse registered tools, inspect their schemas, and execute them interactively. This is the MCP-layer equivalent of Swagger UI -- it shows exactly what AI clients see after protocol conversion (tool names, input schemas, annotations). The Explorer is disabled by default and only available with HTTP-based transports (Streamable HTTP, SSE). It is **not** a production dashboard; it is a developer debugging aid.
 
-The key motivation is ecosystem scale: as the number of `xxx-apcore` projects grows across multiple languages and frameworks, having the Inspector at the MCP layer avoids N-framework x M-language reimplementation. Each `apcore-mcp-{lang}` implementation provides the Inspector once; all framework extensions (`flask-apcore`, `django-apcore`, `express-apcore`, `gin-apcore`, `spring-apcore`, etc.) benefit automatically.
+The key motivation is ecosystem scale: as the number of `xxx-apcore` projects grows across multiple languages and frameworks, having the Explorer at the MCP layer avoids N-framework x M-language reimplementation. Each `apcore-mcp-{lang}` implementation provides the Explorer once; all framework extensions (`flask-apcore`, `django-apcore`, `express-apcore`, `gin-apcore`, `spring-apcore`, etc.) benefit automatically.
 
 **User Story:** As a developer building an `xxx-apcore` project, I want to visually inspect the MCP tools my modules expose and test them from a browser, so that I can verify schema mapping and execution without launching an MCP client like Claude Desktop.
 
 **Acceptance Criteria:**
-1. When `explorer=True` is passed to `serve()` (or `--explorer` on CLI), the Inspector UI is mounted at `inspector_prefix` (default `/inspector`), e.g., `http://localhost:8000/inspector/`.
-2. `GET /inspector/` returns an interactive HTML page listing all registered tools.
-3. `GET /inspector/tools` returns a JSON array of tool summaries (name, description, annotations).
-4. `GET /inspector/tools/<name>` returns a JSON object with full tool detail including `inputSchema`.
-5. `POST /inspector/tools/<name>/call` accepts a JSON body, executes the tool via the Executor pipeline, and returns the result.
-6. The `POST /inspector/tools/<name>/call` endpoint respects `allow_execute` (default `False`); returns 403 when disabled.
+1. When `explorer=True` is passed to `serve()` (or `--explorer` on CLI), the Explorer UI is mounted at `explorer_prefix` (default `/explorer`), e.g., `http://localhost:8000/explorer/`.
+2. `GET /explorer/` returns an interactive HTML page listing all registered tools.
+3. `GET /explorer/tools` returns a JSON array of tool summaries (name, description, annotations).
+4. `GET /explorer/tools/<name>` returns a JSON object with full tool detail including `inputSchema`.
+5. `POST /explorer/tools/<name>/call` accepts a JSON body, executes the tool via the Executor pipeline, and returns the result.
+6. The `POST /explorer/tools/<name>/call` endpoint respects `allow_execute` (default `False`); returns 403 when disabled.
 7. The HTML UI is a single self-contained file (no external CDN dependencies) embedded in the package.
-8. Inspector is disabled by default; enabling it requires explicit opt-in.
-9. Inspector is only available for HTTP-based transports; ignored for stdio.
+8. Explorer is disabled by default; enabling it requires explicit opt-in.
+9. Explorer is only available for HTTP-based transports; ignored for stdio.
 10. The HTML/JS UI is language-agnostic and can be shared across all `apcore-mcp-{lang}` implementations.
-11. `inspector_prefix` is configurable (default `/inspector`); all Inspector endpoints are mounted under this prefix.
+11. `explorer_prefix` is configurable (default `/explorer`); all Explorer endpoints are mounted under this prefix.
 
 **Priority:** P2
 
@@ -976,7 +976,7 @@ for tool_call in response.choices[0].message.tool_calls:
 - **OpenAI API client or agent runtime** -- apcore-mcp exports tool definitions; the user's application handles API calls.
 - **A2A (Agent-to-Agent) adapter** -- this is a separate future project (apcore-a2a).
 - **Authentication/authorization beyond apcore ACL** -- no OAuth, API keys, or custom auth in apcore-mcp.
-- **Full-featured GUI or production dashboard** -- the optional MCP Tool Inspector (F-026) is a minimal developer debugging UI, not a production monitoring dashboard.
+- **Full-featured GUI or production dashboard** -- the optional MCP Tool Explorer (F-026) is a minimal developer debugging UI, not a production monitoring dashboard.
 - **Module execution outside the apcore Executor** -- all calls go through the Executor pipeline.
 
 ### 9.3 Assumptions

@@ -44,7 +44,7 @@ apcore modules carry rich, machine-readable metadata -- `input_schema` (JSON Sch
 | NG-04 | Build an OpenAI API client or agent runtime                                           |
 | NG-05 | Implement A2A (Agent-to-Agent) adapter -- separate future project                     |
 | NG-06 | Add authentication/authorization beyond apcore Executor's built-in ACL                |
-| NG-07 | Build a full-featured production dashboard (the optional Tool Inspector is a minimal dev debugging UI) |
+| NG-07 | Build a full-featured production dashboard (the optional Tool Explorer is a minimal dev debugging UI) |
 
 ### 1.4 Key Metrics
 
@@ -92,7 +92,7 @@ The PRD (`docs/prd-apcore-mcp.md` v1.0) defines 25 features across three priorit
 | Input Validator              | F-023                       | P2       |
 | Streaming & Progress         | F-024                       | P2       |
 | MCPServer Background Wrapper | F-025                       | P2       |
-| MCP Tool Inspector           | F-026                       | P2       |
+| MCP Tool Explorer            | F-026                       | P2       |
 
 ### 2.3 Key Constraints from User Requirements
 
@@ -2698,7 +2698,7 @@ show_missing = true
 | Streaming tool results   | Bridge `executor.stream()` to MCP clients via `notifications/progress`. Client opt-in via `progressToken`. Each chunk sent as progress notification with `message` containing JSON-serialized chunk. Final `CallToolResult` contains complete accumulated result. | apcore core `stream()` support |
 | Tool usage analytics     | Track tool call counts, latencies, error rates                        | v1 observability |
 | Multi-registry support   | Merge tools from multiple registries into one server                  | v1 stable     |
-| MCP Tool Inspector       | Optional browser UI for inspecting and testing MCP tools (F-026). Single HTML/JS asset shared across all `apcore-mcp-{lang}` implementations. Mounts at configurable `inspector_prefix` (default `/inspector`) when `explorer=True`. | HTTP transport |
+| MCP Tool Explorer        | Optional browser UI for inspecting and testing MCP tools (F-026). Single HTML/JS asset shared across all `apcore-mcp-{lang}` implementations. Mounts at configurable `explorer_prefix` (default `/explorer`) when `explorer=True`. | HTTP transport |
 
 ---
 

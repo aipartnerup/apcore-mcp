@@ -2273,43 +2273,43 @@ MCP_ELICIT_KEY: str = "_mcp_elicit"
 
 ---
 
-### 3.15 FR-INSPECTOR: MCP Tool Inspector Requirements
+### 3.15 FR-EXPLORER: MCP Tool Explorer Requirements
 
-The MCP Tool Inspector is an optional, built-in browser UI that allows developers to browse, inspect, and test MCP tools. It is only available with HTTP-based transports and must be explicitly enabled.
+The MCP Tool Explorer is an optional, built-in browser UI that allows developers to browse, inspect, and test MCP tools. It is only available with HTTP-based transports and must be explicitly enabled.
 
 ---
 
-#### FR-INSPECTOR-001: Serve Inspector UI when explorer=True
+#### FR-EXPLORER-001: Serve Explorer UI when explorer=True
 
 | Field | Value |
 |-------|-------|
-| **ID** | FR-INSPECTOR-001 |
-| **Title** | Serve Inspector HTML UI at `inspector_prefix` when enabled |
+| **ID** | FR-EXPLORER-001 |
+| **Title** | Serve Explorer HTML UI at `explorer_prefix` when enabled |
 | **Priority** | P2 |
 | **Traces to** | F-026 |
 
-**Description:** When `explorer=True` is passed to `serve()` (or `--explorer` on CLI) and the transport is HTTP-based (Streamable HTTP or SSE), the server SHALL mount a self-contained HTML page at `GET /inspector/` (or the configured `inspector_prefix`) that lists all registered tools with their descriptions and annotations. The `inspector_prefix` parameter is configurable (default `/inspector`).
+**Description:** When `explorer=True` is passed to `serve()` (or `--explorer` on CLI) and the transport is HTTP-based (Streamable HTTP or SSE), the server SHALL mount a self-contained HTML page at `GET /explorer/` (or the configured `explorer_prefix`) that lists all registered tools with their descriptions and annotations. The `explorer_prefix` parameter is configurable (default `/explorer`).
 
 **Input/Trigger:** `serve(registry, transport="streamable-http", explorer=True)`
 
-**Expected Output:** `GET /inspector/` returns HTTP 200 with `Content-Type: text/html` containing the Inspector UI.
+**Expected Output:** `GET /explorer/` returns HTTP 200 with `Content-Type: text/html` containing the Explorer UI.
 
 **Boundary Conditions:**
-- `explorer=True` with stdio transport: Inspector is silently ignored (no HTTP server).
-- `explorer=False` (default): `GET /inspector/` is not mounted; server behaves as before.
+- `explorer=True` with stdio transport: Explorer is silently ignored (no HTTP server).
+- `explorer=False` (default): `GET /explorer/` is not mounted; server behaves as before.
 
 ---
 
-#### FR-INSPECTOR-002: JSON tool list endpoint
+#### FR-EXPLORER-002: JSON tool list endpoint
 
 | Field | Value |
 |-------|-------|
-| **ID** | FR-INSPECTOR-002 |
-| **Title** | GET /inspector/tools returns JSON array of tool summaries |
+| **ID** | FR-EXPLORER-002 |
+| **Title** | GET /explorer/tools returns JSON array of tool summaries |
 | **Priority** | P2 |
 | **Traces to** | F-026 |
 
-**Description:** When the Inspector is enabled, `GET /inspector/tools` SHALL return a JSON array where each element contains `name` (string), `description` (string), and `annotations` (object with hint booleans).
+**Description:** When the Explorer is enabled, `GET /explorer/tools` SHALL return a JSON array where each element contains `name` (string), `description` (string), and `annotations` (object with hint booleans).
 
 **Expected Output:**
 ```json
@@ -2329,29 +2329,29 @@ The MCP Tool Inspector is an optional, built-in browser UI that allows developer
 
 ---
 
-#### FR-INSPECTOR-003: JSON tool detail endpoint
+#### FR-EXPLORER-003: JSON tool detail endpoint
 
 | Field | Value |
 |-------|-------|
-| **ID** | FR-INSPECTOR-003 |
-| **Title** | GET /inspector/tools/<name> returns full tool detail with inputSchema |
+| **ID** | FR-EXPLORER-003 |
+| **Title** | GET /explorer/tools/<name> returns full tool detail with inputSchema |
 | **Priority** | P2 |
 | **Traces to** | F-026 |
 
-**Description:** When the Inspector is enabled, `GET /inspector/tools/<name>` SHALL return a JSON object with full tool metadata including `name`, `description`, `annotations`, and `inputSchema`. Returns HTTP 404 if the tool name is not found.
+**Description:** When the Explorer is enabled, `GET /explorer/tools/<name>` SHALL return a JSON object with full tool metadata including `name`, `description`, `annotations`, and `inputSchema`. Returns HTTP 404 if the tool name is not found.
 
 ---
 
-#### FR-INSPECTOR-004: Tool execution endpoint with allow_execute guard
+#### FR-EXPLORER-004: Tool execution endpoint with allow_execute guard
 
 | Field | Value |
 |-------|-------|
-| **ID** | FR-INSPECTOR-004 |
-| **Title** | POST /inspector/tools/<name>/call executes a tool via the Executor pipeline |
+| **ID** | FR-EXPLORER-004 |
+| **Title** | POST /explorer/tools/<name>/call executes a tool via the Executor pipeline |
 | **Priority** | P2 |
 | **Traces to** | F-026 |
 
-**Description:** When the Inspector is enabled and `allow_execute=True`, `POST /inspector/tools/<name>/call` SHALL accept a JSON body as tool input, execute the tool through the full Executor pipeline (ACL, validation, middleware), and return the result as JSON. When `allow_execute=False` (default), this endpoint SHALL return HTTP 403.
+**Description:** When the Explorer is enabled and `allow_execute=True`, `POST /explorer/tools/<name>/call` SHALL accept a JSON body as tool input, execute the tool through the full Executor pipeline (ACL, validation, middleware), and return the result as JSON. When `allow_execute=False` (default), this endpoint SHALL return HTTP 403.
 
 **Expected Output (success):**
 ```json
@@ -2366,38 +2366,38 @@ The MCP Tool Inspector is an optional, built-in browser UI that allows developer
 
 ---
 
-#### FR-INSPECTOR-005: Self-contained HTML asset with no external dependencies
+#### FR-EXPLORER-005: Self-contained HTML asset with no external dependencies
 
 | Field | Value |
 |-------|-------|
-| **ID** | FR-INSPECTOR-005 |
-| **Title** | Inspector HTML/JS is a single self-contained file |
+| **ID** | FR-EXPLORER-005 |
+| **Title** | Explorer HTML/JS is a single self-contained file |
 | **Priority** | P2 |
 | **Traces to** | F-026 |
 
-**Description:** The Inspector UI SHALL be a single HTML file with inline CSS and JavaScript, with no external CDN dependencies. This file is language-agnostic and can be shared across all `apcore-mcp-{lang}` implementations. Each language implementation embeds this file as a static asset in its package.
+**Description:** The Explorer UI SHALL be a single HTML file with inline CSS and JavaScript, with no external CDN dependencies. This file is language-agnostic and can be shared across all `apcore-mcp-{lang}` implementations. Each language implementation embeds this file as a static asset in its package.
 
 ---
 
-#### FR-INSPECTOR-006: Configurable inspector_prefix parameter
+#### FR-EXPLORER-006: Configurable explorer_prefix parameter
 
 | Field | Value |
 |-------|-------|
-| **ID** | FR-INSPECTOR-006 |
-| **Title** | `inspector_prefix` parameter configurable with default `/inspector` |
+| **ID** | FR-EXPLORER-006 |
+| **Title** | `explorer_prefix` parameter configurable with default `/explorer` |
 | **Priority** | P2 |
 | **Traces to** | F-026 |
 
-**Description:** The `serve()` function SHALL accept an `inspector_prefix` parameter (default `/inspector`) that controls the URL prefix under which all Inspector endpoints are mounted. When set to a custom value (e.g., `/custom`), endpoints SHALL be available at `GET /custom/`, `GET /custom/tools`, `GET /custom/tools/<name>`, and `POST /custom/tools/<name>/call`.
+**Description:** The `serve()` function SHALL accept an `explorer_prefix` parameter (default `/explorer`) that controls the URL prefix under which all Explorer endpoints are mounted. When set to a custom value (e.g., `/custom`), endpoints SHALL be available at `GET /custom/`, `GET /custom/tools`, `GET /custom/tools/<name>`, and `POST /custom/tools/<name>/call`.
 
-**Input/Trigger:** `serve(registry, transport="streamable-http", explorer=True, inspector_prefix="/custom")`
+**Input/Trigger:** `serve(registry, transport="streamable-http", explorer=True, explorer_prefix="/custom")`
 
-**Expected Output:** All Inspector endpoints are mounted under `/custom/` instead of the default `/inspector/`.
+**Expected Output:** All Explorer endpoints are mounted under `/custom/` instead of the default `/explorer/`.
 
 **Boundary Conditions:**
-- Default value is `/inspector`.
+- Default value is `/explorer`.
 - Prefix must start with `/`.
-- Trailing slash is normalized (both `/inspector` and `/inspector/` are accepted).
+- Trailing slash is normalized (both `/explorer` and `/explorer/` are accepted).
 
 ---
 
@@ -3352,7 +3352,7 @@ MCP_ELICIT_KEY: str = "_mcp_elicit"
 | F-018 | serve() Module Filtering | FR-SERVER-008, FR-SERVER-009, FR-FILTER-001, FR-FILTER-002, FR-FILTER-003 | -- | UC-001 |
 | F-019 | Health Check Endpoint | FR-HEALTH-001, FR-HEALTH-002 | -- | -- |
 | F-020 | MCP Resource Exposure | FR-RESOURCE-001, FR-RESOURCE-002 | -- | -- |
-| F-026 | MCP Tool Inspector | FR-INSPECTOR-001 through FR-INSPECTOR-006 | -- | -- |
+| F-026 | MCP Tool Explorer | FR-EXPLORER-001 through FR-EXPLORER-006 | -- | -- |
 
 ### 9.2 FR to PRD Feature Reverse Traceability
 
@@ -3436,12 +3436,12 @@ MCP_ELICIT_KEY: str = "_mcp_elicit"
 | FR-HEALTH-002 | F-019 |
 | FR-RESOURCE-001 | F-020 |
 | FR-RESOURCE-002 | F-020 |
-| FR-INSPECTOR-001 | F-026 |
-| FR-INSPECTOR-002 | F-026 |
-| FR-INSPECTOR-003 | F-026 |
-| FR-INSPECTOR-004 | F-026 |
-| FR-INSPECTOR-005 | F-026 |
-| FR-INSPECTOR-006 | F-026 |
+| FR-EXPLORER-001 | F-026 |
+| FR-EXPLORER-002 | F-026 |
+| FR-EXPLORER-003 | F-026 |
+| FR-EXPLORER-004 | F-026 |
+| FR-EXPLORER-005 | F-026 |
+| FR-EXPLORER-006 | F-026 |
 
 ---
 
@@ -3531,7 +3531,7 @@ CallFrequencyExceededError(module_id, count, max_repeat, call_chain)  # code="CA
 | FR-FILTER | 3 |
 | FR-HEALTH | 2 |
 | FR-RESOURCE | 2 |
-| FR-INSPECTOR | 6 |
+| FR-EXPLORER | 6 |
 | **Total FRs** | **84** |
 | NFR-PERF | 4 |
 | NFR-SEC | 3 |

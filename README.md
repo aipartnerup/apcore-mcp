@@ -42,7 +42,7 @@ Automatic MCP Server & OpenAI Tools Bridge for apcore.
 - **Error sanitization** — ACL errors and internal errors are sanitized; stack traces are never leaked
 - **Dynamic registration** — modules registered/unregistered at runtime are reflected immediately
 - **Dual output** — same registry powers both MCP Server and OpenAI tool definitions
-- **Tool Inspector** — optional built-in browser UI for inspecting and testing MCP tools (like Swagger UI for MCP)
+- **Tool Explorer** — optional built-in browser UI for exploring and testing MCP tools (like Swagger UI for MCP)
 
 ## How It Works
 
