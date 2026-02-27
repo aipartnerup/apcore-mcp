@@ -3,12 +3,12 @@
 | Field       | Value                                                                    |
 |-------------|--------------------------------------------------------------------------|
 | Title       | apcore-mcp: Automatic MCP Server & OpenAI Tools Bridge                   |
-| Version     | 1.0                                                                      |
-| Date        | 2026-02-15                                                               |
+| Version     | 1.3                                                                      |
+| Date        | 2026-02-27                                                               |
 | Author      | aipartnerup Engineering Team                                             |
 | Status      | Draft                                                                    |
 | Reviewers   | apcore Core Maintainers, Community Contributors                          |
-| PRD Ref     | `docs/prd-apcore-mcp.md` v1.0                                           |
+| PRD Ref     | `docs/prd-apcore-mcp.md` v1.3                                           |
 | License     | Apache 2.0                                                               |
 
 ---
