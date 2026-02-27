@@ -43,7 +43,7 @@ apcore modules carry rich, machine-readable metadata -- `input_schema` (JSON Sch
 | NG-03 | Implement domain-specific node/function wrapping -- that is `xxx-apcore` projects' job |
 | NG-04 | Build an OpenAI API client or agent runtime                                           |
 | NG-05 | Implement A2A (Agent-to-Agent) adapter -- separate future project                     |
-| NG-06 | Add authentication/authorization beyond apcore Executor's built-in ACL                |
+| NG-06 | Implement full OAuth flows, API key management, or user/session stores -- JWT validation bridges to apcore ACL via `Authenticator` protocol (F-027) |
 | NG-07 | Build a full-featured production dashboard (the optional Tool Explorer is a minimal dev debugging UI) |
 
 ### 1.4 Key Metrics
@@ -93,13 +93,14 @@ The PRD (`docs/prd-apcore-mcp.md` v1.0) defines 25 features across three priorit
 | Streaming & Progress         | F-024                       | P2       |
 | MCPServer Background Wrapper | F-025                       | P2       |
 | MCP Tool Explorer            | F-026                       | P2       |
+| JWT Authentication           | F-027                       | P2       |
 
 ### 2.3 Key Constraints from User Requirements
 
 1. **Architecture:** Layered module structure (`src/apcore_mcp/{adapters,server,cli,converters}/`) -- extensible for future `xxx-apcore` projects.
 2. **Async strategy:** Async-first internally; sync modules bridged via `asyncio.to_thread()` (leveraging `Executor.call_async()` which already handles this).
 3. **Testing:** TDD strict mode with comprehensive coverage -- this is a foundation project.
-4. **Auth/ACL:** Rely entirely on apcore `Executor`'s built-in ACL. No custom auth layer.
+4. **Auth/ACL:** Optional JWT authentication at the HTTP transport layer (F-027) bridges to apcore `Executor`'s built-in ACL via `Identity` injection. Custom backends via `Authenticator` protocol.
 5. **Quality bar:** High -- all future `xxx-apcore` projects depend on this infrastructure.
 
 ---
@@ -619,6 +620,11 @@ src/apcore_mcp/
         annotations.py       # 60 LOC  - AnnotationMapper
         errors.py            # 100 LOC - ErrorMapper
         id_normalizer.py     # 40 LOC  - ModuleIDNormalizer
+    auth/
+        __init__.py          # 10 LOC  - Re-exports
+        protocol.py          # 20 LOC  - Authenticator Protocol
+        jwt.py               # 100 LOC - JWTAuthenticator + ClaimMapping
+        middleware.py         # 70 LOC  - AuthMiddleware + ContextVar bridge
     server/
         __init__.py          # 10 LOC  - Re-exports
         factory.py           # 150 LOC - MCPServerFactory
@@ -1642,6 +1648,99 @@ class MCPServer:
 
 **Thread/async safety:** The background thread runs its own `asyncio` event loop via `asyncio.run()`. The `stop()` method signals shutdown by scheduling a cancellation on that loop. The `start()`/`stop()`/`wait()` methods are safe to call from any thread.
 
+### 6.11 JWT Authentication (F-027)
+
+**Responsibility:** Validate JWT Bearer tokens on HTTP requests, extract caller identity, and inject it into the apcore `Context` so that the Executor's ACL conditions (`identity_types`, `roles`) work with external callers.
+
+**Rationale:** apcore already has `Identity`, `ContextFactory` Protocol, and ACL conditions designed for identity-based access control. However, `Context` was created without `Identity` in the MCP layer, making ACL role/type-based conditions ineffective for HTTP callers. This component bridges the gap: extract JWT from HTTP headers, validate it, and inject the resulting `Identity` into `Context`.
+
+**Architecture:**
+
+```
+HTTP Request (Authorization: Bearer <token>)
+  → [AuthMiddleware] validates JWT, sets ContextVar<Identity>
+    → [Starlette /mcp route]
+      → [MCP SDK]
+        → [factory.py handle_call_tool] reads ContextVar, passes via extra dict
+          → [router.py handle_call] injects Identity into Context.create()
+            → [Executor] context.identity available for ACL
+```
+
+**Key bridge:** `ContextVar[Identity | None]` connects ASGI middleware to MCP handler, crossing the Starlette → MCP SDK boundary without modifying MCP protocol internals.
+
+**Components:**
+
+#### 6.11.1 Authenticator Protocol
+
+```python
+@runtime_checkable
+class Authenticator(Protocol):
+    def authenticate(self, headers: dict[str, str]) -> Identity | None:
+        """Authenticate from lowercase header keys. Returns Identity or None."""
+        ...
+```
+
+Same `@runtime_checkable` pattern as `MetricsExporter` in transport.py.
+
+#### 6.11.2 JWTAuthenticator
+
+```python
+class JWTAuthenticator:
+    def __init__(
+        self,
+        key: str,
+        *,
+        algorithms: list[str] | None = None,        # default: ["HS256"]
+        audience: str | None = None,
+        issuer: str | None = None,
+        claim_mapping: ClaimMapping | None = None,   # default: ClaimMapping()
+        require_claims: list[str] | None = None,     # default: ["sub"]
+    ) -> None: ...
+
+    def authenticate(self, headers: dict[str, str]) -> Identity | None: ...
+```
+
+`ClaimMapping` (frozen dataclass): `id_claim="sub"`, `type_claim="type"`, `roles_claim="roles"`, `attrs_claims=None`.
+
+**Error handling:** All `jwt.InvalidTokenError` subclasses produce `None` return, never leak token content.
+
+#### 6.11.3 AuthMiddleware
+
+```python
+auth_identity_var: ContextVar[Identity | None]  # the bridge
+
+class AuthMiddleware:
+    def __init__(
+        self,
+        app: ASGIApp,
+        authenticator: Authenticator,
+        *,
+        exempt_paths: set[str] | None = None,  # default: {"/health", "/metrics"}
+        require_auth: bool = True,
+    ) -> None: ...
+```
+
+- Skips non-HTTP scopes (WebSocket, lifespan) -- passthrough without authentication.
+- Exempt paths bypass authentication entirely.
+- On failure + `require_auth=True`: returns 401 JSON with `WWW-Authenticate: Bearer`.
+- On failure + `require_auth=False`: forwards without identity (permissive mode).
+- ContextVar is always reset in `finally` block, even on exceptions.
+
+#### 6.11.4 Pipeline Integration (Modified Files)
+
+- **transport.py:** `run_streamable_http()` and `run_sse()` accept `middleware: list[tuple[type, dict]] | None`. Middleware wraps the Starlette app after route setup.
+- **factory.py:** `handle_call_tool` reads `auth_identity_var.get()` and adds to `extra["identity"]`.
+- **router.py:** `handle_call()` extracts `identity = extra.get("identity")` and passes to `Context.create(data=context_data, identity=identity)`.
+- **`serve()` / `MCPServer`:** Accept `authenticator` parameter, build middleware list when authenticator is provided + HTTP transport.
+- **CLI:** `--jwt-secret`, `--jwt-algorithm`, `--jwt-audience`, `--jwt-issuer` flags create `JWTAuthenticator`.
+
+**Cross-language implementation notes:**
+
+- The `ContextVar` bridge is Python-specific. TypeScript implementations should use `AsyncLocalStorage` (Node.js) or equivalent async context propagation.
+- The `Authenticator` Protocol maps to a TypeScript `interface` or Go `interface`.
+- `ClaimMapping` maps to a plain options object / struct in other languages.
+- The ASGI middleware pattern maps to Express middleware (TypeScript) or `http.Handler` wrapping (Go).
+
 ---
 
 ## 7. API Design
@@ -1667,6 +1766,7 @@ def serve(
     dynamic: bool = False,
     validate_inputs: bool = False,
     metrics_collector: MetricsExporter | None = None,
+    authenticator: Authenticator | None = None,
 ) -> None:
     """Launch an MCP Server exposing all apcore modules as tools.
 
@@ -2436,6 +2536,9 @@ Run with `N = 10, 50, 100, 500` to establish linear scaling characteristics.
 | Module ID injection                   | Low     | Low     | Module IDs are always looked up via Registry.get(); no eval/exec |
 | Sensitive data in schemas             | Low     | Medium  | apcore's `x-sensitive` fields are respected by Executor's redaction system |
 | Unauthorized network access (HTTP)    | Medium  | High    | Default host is 127.0.0.1 (localhost only); 0.0.0.0 requires explicit opt-in |
+| Unauthenticated tool calls (HTTP)     | Medium  | High    | Optional `JWTAuthenticator` validates Bearer tokens; `AuthMiddleware` returns 401 for invalid/missing tokens |
+| JWT token leakage in logs/errors      | Medium  | High    | Token content is never logged or included in error responses; only `jwt.InvalidTokenError` type is logged at DEBUG level |
+| JWT secret compromise                 | Low     | Critical| Secret is passed as runtime parameter, never hardcoded; asymmetric algorithms (RS256) supported for production |
 
 ### 12.2 Trust Boundaries
 
@@ -2472,6 +2575,8 @@ Run with `N = 10, 50, 100, 500` to establish linear scaling characteristics.
 4. **Network binding:** The default `host="127.0.0.1"` restricts HTTP/SSE transports to localhost. Developers must explicitly set `host="0.0.0.0"` to bind to all interfaces, which is documented as a security consideration.
 
 5. **No code execution from inputs:** Module IDs from tool calls are used only as dictionary keys for `Registry.get()`. No dynamic import, eval, or exec is performed on user-supplied strings.
+
+6. **JWT authentication (F-027):** When `authenticator` is provided, `AuthMiddleware` validates Bearer tokens before requests reach the MCP handler. Invalid tokens return a generic 401 JSON response without leaking token content. The `ContextVar` holding the `Identity` is always reset in a `finally` block, preventing identity leakage across requests even on exceptions. Health and metrics endpoints are exempt by default to avoid breaking monitoring.
 
 ---
 
@@ -2510,6 +2615,7 @@ classifiers = [
 dependencies = [
     "apcore>=0.5.0,<1.0",
     "mcp>=1.0.0,<2.0",
+    "PyJWT>=2.0",
 ]
 
 [project.optional-dependencies]

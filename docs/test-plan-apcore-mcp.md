@@ -182,6 +182,7 @@ show_missing = true
 | F-019       | Health Check Endpoint              | P2       | TC-E2E-004                                                       |
 | F-020       | MCP Resource Exposure              | P2       | TC-E2E-005                                                       |
 | F-026       | MCP Tool Explorer                  | P2       | TC-EXPLORER-001 through TC-EXPLORER-008                          |
+| F-027       | JWT Authentication                 | P2       | TC-AUTH-001 through TC-AUTH-022, TC-AUTH-MW-001 through TC-AUTH-MW-012, TC-AUTH-INT-001 through TC-AUTH-INT-013 |
 
 ---
 
@@ -2704,6 +2705,76 @@ show_missing = true
   3. Assert `TransportManager.run_sse` default `host` is `"127.0.0.1"`.
 - **Expected Result:** All defaults bind to localhost only. No accidental network exposure.
 - **Traceability:** F-007 (AC3)
+
+## 9b. JWT Authentication Test Cases (TC-AUTH-xxx)
+
+**Test Files:** `tests/auth/test_jwt.py`, `tests/auth/test_middleware.py`, `tests/auth/test_integration.py`
+
+---
+
+### Unit Tests: JWTAuthenticator (TC-AUTH-001 to TC-AUTH-022)
+
+| TC ID | Description | Priority | Traceability |
+|-------|-------------|----------|--------------|
+| TC-AUTH-001 | Implements `Authenticator` protocol (`isinstance` check) | P0 | FR-AUTH-001 |
+| TC-AUTH-002 | Valid token returns Identity with correct `id` | P0 | FR-AUTH-002 |
+| TC-AUTH-003 | Valid token with roles returns Identity with roles tuple | P0 | FR-AUTH-002 |
+| TC-AUTH-004 | Valid token with type claim returns Identity with type | P0 | FR-AUTH-002 |
+| TC-AUTH-005 | Missing Authorization header returns None | P0 | FR-AUTH-002 |
+| TC-AUTH-006 | Non-Bearer scheme (e.g., Basic) returns None | P0 | FR-AUTH-002 |
+| TC-AUTH-007 | Empty Bearer token returns None | P0 | FR-AUTH-002 |
+| TC-AUTH-008 | Expired token returns None | P0 | FR-AUTH-002 |
+| TC-AUTH-009 | Invalid signature returns None | P0 | FR-AUTH-002 |
+| TC-AUTH-010 | Malformed token string returns None | P0 | FR-AUTH-002 |
+| TC-AUTH-011 | Missing required claim returns None | P1 | FR-AUTH-002 |
+| TC-AUTH-012 | Valid audience claim passes | P1 | FR-AUTH-002 |
+| TC-AUTH-013 | Invalid audience claim returns None | P1 | FR-AUTH-002 |
+| TC-AUTH-014 | Valid issuer claim passes | P1 | FR-AUTH-002 |
+| TC-AUTH-015 | Invalid issuer claim returns None | P1 | FR-AUTH-002 |
+| TC-AUTH-016 | Bearer prefix is case-insensitive | P2 | FR-AUTH-002 |
+| TC-AUTH-017 | Custom `id_claim` mapping | P1 | FR-AUTH-002 |
+| TC-AUTH-018 | Custom `roles_claim` mapping | P1 | FR-AUTH-002 |
+| TC-AUTH-019 | `attrs_claims` extracts extra claims into Identity.attrs | P1 | FR-AUTH-002 |
+| TC-AUTH-020 | Missing attrs claim key is skipped (no error) | P2 | FR-AUTH-002 |
+| TC-AUTH-021 | Non-list roles value is ignored (returns empty tuple) | P2 | FR-AUTH-002 |
+| TC-AUTH-022 | ClaimMapping is frozen (immutable) | P2 | FR-AUTH-002 |
+
+### Unit Tests: AuthMiddleware (TC-AUTH-MW-001 to TC-AUTH-MW-012)
+
+| TC ID | Description | Priority | Traceability |
+|-------|-------------|----------|--------------|
+| TC-AUTH-MW-001 | Returns 401 without token | P0 | FR-AUTH-003 |
+| TC-AUTH-MW-002 | Returns 401 with invalid token | P0 | FR-AUTH-003 |
+| TC-AUTH-MW-003 | 401 response includes `WWW-Authenticate: Bearer` header | P0 | FR-AUTH-003 |
+| TC-AUTH-MW-004 | `/health` path is exempt (passes without token) | P0 | FR-AUTH-003 |
+| TC-AUTH-MW-005 | `/metrics` path is exempt | P0 | FR-AUTH-003 |
+| TC-AUTH-MW-006 | Custom exempt paths work | P1 | FR-AUTH-003 |
+| TC-AUTH-MW-007 | Permissive mode: no token passes with None identity | P1 | FR-AUTH-003 |
+| TC-AUTH-MW-008 | Permissive mode: valid token sets identity | P1 | FR-AUTH-003 |
+| TC-AUTH-MW-009 | ContextVar is set during request | P0 | FR-AUTH-003 |
+| TC-AUTH-MW-010 | ContextVar is reset after request | P0 | FR-AUTH-003 |
+| TC-AUTH-MW-011 | ContextVar is reset on exception | P0 | FR-AUTH-003 |
+| TC-AUTH-MW-012 | WebSocket/lifespan scopes pass through without auth | P0 | FR-AUTH-003 |
+
+### Integration Tests (TC-AUTH-INT-001 to TC-AUTH-INT-013)
+
+Uses real apcore modules from `examples/extensions/` (greeting, math_calc, text_echo).
+
+| TC ID | Description | Priority | Traceability |
+|-------|-------------|----------|--------------|
+| TC-AUTH-INT-001 | Router with identity in extra: real tool executes successfully | P0 | FR-AUTH-004 |
+| TC-AUTH-INT-002 | Router without identity: backward compatibility | P0 | FR-AUTH-004 |
+| TC-AUTH-INT-003 | Identity roles preserved through extra → Context pipeline | P0 | FR-AUTH-004 |
+| TC-AUTH-INT-004 | ContextVar set during authenticated request | P0 | FR-AUTH-003, FR-AUTH-004 |
+| TC-AUTH-INT-005 | ContextVar is None without token (permissive) | P1 | FR-AUTH-003 |
+| TC-AUTH-INT-006 | Full pipeline: JWT → middleware → ContextVar → router → real module | P0 | FR-AUTH-004 |
+| TC-AUTH-INT-007 | Unauthenticated request rejected (401) | P0 | FR-AUTH-003 |
+| TC-AUTH-INT-008 | Health endpoint bypasses auth | P0 | FR-AUTH-003 |
+| TC-AUTH-INT-009 | Expired token rejected (401) | P0 | FR-AUTH-002 |
+| TC-AUTH-INT-010 | WebSocket scope bypasses auth | P0 | FR-AUTH-003 |
+| TC-AUTH-INT-011 | WebSocket scope does not set identity even with valid token | P1 | FR-AUTH-003 |
+| TC-AUTH-INT-012 | Real modules build as MCP tools with auth enabled | P0 | FR-AUTH-005 |
+| TC-AUTH-INT-013 | All three real tools execute with identity in context | P0 | FR-AUTH-004 |
 
 ---
 

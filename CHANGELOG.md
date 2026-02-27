@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-02-27
+
+### Added
+- JWT Authentication feature specification (F-027) across PRD, SRS, tech design, and test plan
+- `Authenticator` protocol for pluggable authentication backends
+- `JWTAuthenticator` with `ClaimMapping` for JWT Bearer token validation
+- `AuthMiddleware` ASGI middleware with `ContextVar` bridge for Identity injection
+- `auth/` package added to package structure (protocol.py, jwt.py, middleware.py)
+- CLI flags: `--jwt-secret`, `--jwt-algorithm`, `--jwt-audience`, `--jwt-issuer`
+- `PyJWT>=2.0` added as required dependency
+- 47 test cases specified: 22 unit (JWT), 12 unit (middleware), 13 integration
+
+### Changed
+- Updated NG-06 non-goal: from "no auth" to "no OAuth/API key management" (JWT bridges to ACL)
+- Updated C-05 constraint: authentication bridges to apcore ACL, not replaces it
+- Updated security threat model with JWT-specific entries
+- Updated `serve()` API with `authenticator` parameter
+
 ## [0.3.0] - 2026-02-25
 
 ### Added

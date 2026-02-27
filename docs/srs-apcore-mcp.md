@@ -159,7 +159,7 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 | C-02 | Must use apcore `Executor` for all tool call routing | ACL, validation, and middleware guarantees must be preserved |
 | C-03 | Core logic must not exceed 1,200 lines (excluding tests and docs) | Thin adapter design principle; complexity belongs in apcore-python and mcp SDK |
 | C-04 | Python >= 3.10 required | Aligns with apcore-python minimum; needed for modern type hints and `match` |
-| C-05 | No custom authentication layer | apcore Executor's ACL is the sole access control mechanism |
+| C-05 | Authentication bridges to apcore ACL, not replaces it | Optional `JWTAuthenticator` validates tokens at HTTP layer and injects `Identity` into `Context` for the Executor's ACL. No OAuth flows, API key management, or user stores. |
 | C-06 | `to_openai_tools()` must have zero runtime dependency on `openai` package | Maximum interoperability; returns plain dicts |
 
 ### 2.5 Assumptions and Dependencies
@@ -2398,6 +2398,103 @@ The MCP Tool Explorer is an optional, built-in browser UI that allows developers
 - Default value is `/explorer`.
 - Prefix must start with `/`.
 - Trailing slash is normalized (both `/explorer` and `/explorer/` are accepted).
+
+### 3.16 FR-AUTH: JWT Authentication Requirements
+
+#### FR-AUTH-001: Authenticator Protocol
+
+**Description:** A `@runtime_checkable` Protocol `Authenticator` defines the interface for pluggable authentication backends.
+
+**Interface:**
+```
+Authenticator.authenticate(headers: dict[str, str]) -> Identity | None
+```
+
+**Behavior:** Accepts lowercase header keys. Returns `Identity` on success, `None` on failure. Must not raise exceptions.
+
+---
+
+#### FR-AUTH-002: JWTAuthenticator
+
+**Description:** Built-in JWT Bearer token authenticator using a JWT validation library (e.g., PyJWT for Python, jsonwebtoken for TypeScript).
+
+**Configuration:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `key` | `str` | (required) | Secret key or public key for verification |
+| `algorithms` | `list[str]` | `["HS256"]` | Allowed JWT algorithms |
+| `audience` | `str \| None` | `None` | Expected `aud` claim |
+| `issuer` | `str \| None` | `None` | Expected `iss` claim |
+| `claim_mapping` | `ClaimMapping` | `ClaimMapping()` | Maps JWT claims to Identity fields |
+| `require_claims` | `list[str]` | `["sub"]` | Claims that must be present |
+
+**ClaimMapping fields:** `id_claim="sub"`, `type_claim="type"`, `roles_claim="roles"`, `attrs_claims=None`.
+
+**Behavior:**
+1. Extracts Bearer token from `Authorization` header (case-insensitive prefix).
+2. Decodes and validates token using a JWT library.
+3. Maps claims to `Identity(id, type, roles, attrs)`.
+4. Returns `None` on any error (expired, bad signature, missing claims) -- never leaks token content.
+
+---
+
+#### FR-AUTH-003: AuthMiddleware
+
+**Description:** ASGI middleware that validates requests and bridges identity to MCP handler via `ContextVar`.
+
+**Configuration:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `app` | ASGI app | (required) | The wrapped application |
+| `authenticator` | `Authenticator` | (required) | Authentication backend |
+| `exempt_paths` | `set[str]` | `{"/health", "/metrics"}` | Paths that bypass auth |
+| `require_auth` | `bool` | `True` | If False, unauthenticated requests proceed without identity |
+
+**Behavior:**
+1. Non-HTTP scopes (WebSocket, lifespan) pass through without authentication.
+2. Exempt paths pass through without authentication.
+3. Extracts headers from ASGI scope, calls `authenticator.authenticate(headers)`.
+4. On success: sets `auth_identity_var` ContextVar, forwards request, resets in `finally`.
+5. On failure + `require_auth=True`: returns 401 JSON with `WWW-Authenticate: Bearer`.
+6. On failure + `require_auth=False`: forwards without identity (permissive mode).
+
+---
+
+#### FR-AUTH-004: Identity Pipeline Integration
+
+**Description:** The authenticated identity flows from middleware through factory to router to Context.
+
+**Data Flow:**
+1. `AuthMiddleware` sets `auth_identity_var: ContextVar[Identity | None]`.
+2. `MCPServerFactory.handle_call_tool` reads `auth_identity_var.get()`, adds to `extra["identity"]`.
+3. `ExecutionRouter.handle_call` extracts `identity = extra.get("identity")`, passes to `Context.create(identity=identity)`.
+4. `Executor.call_async()` receives Context with Identity -- ACL conditions (`identity_types`, `roles`) are now effective.
+
+---
+
+#### FR-AUTH-005: serve() and MCPServer authenticator Parameter
+
+**Description:** Both `serve()` and `MCPServer.__init__()` accept an optional `authenticator` parameter. When provided with an HTTP transport, `AuthMiddleware` is applied to the Starlette app.
+
+**Behavior:**
+1. `authenticator` is ignored for stdio transport (no HTTP layer).
+2. For HTTP transports, middleware list is built as `[(AuthMiddleware, {"authenticator": authenticator})]` and passed to transport manager.
+
+---
+
+#### FR-AUTH-006: CLI JWT Flags
+
+**Description:** The CLI entry point provides flags for JWT configuration.
+
+**Flags:**
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--jwt-secret` | `str` | `None` | JWT secret key; enables JWT auth when set |
+| `--jwt-algorithm` | `str` | `"HS256"` | JWT algorithm |
+| `--jwt-audience` | `str` | `None` | Expected audience claim |
+| `--jwt-issuer` | `str` | `None` | Expected issuer claim |
+
+**Behavior:** When `--jwt-secret` is provided, a `JWTAuthenticator` is created and passed to `serve(authenticator=...)`.
 
 ---
 

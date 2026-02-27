@@ -777,14 +777,40 @@ The key motivation is ecosystem scale: as the number of `xxx-apcore` projects gr
 
 ---
 
+#### F-027: JWT Authentication for HTTP Transports
+
+**Title:** Optional JWT Bearer token authentication for HTTP-based MCP endpoints
+
+**Description:** When serving over Streamable HTTP or SSE, the server can optionally require a valid JWT Bearer token on every request to `/mcp`. On successful validation, the JWT claims are mapped to an apcore `Identity` and injected into the `Context` passed to the Executor, enabling apcore's existing ACL conditions (`identity_types`, `roles`) to work with external callers. Authentication is pluggable via an `Authenticator` protocol; a built-in `JWTAuthenticator` implementation is provided. Health and metrics endpoints are exempt by default.
+
+This feature bridges the gap between HTTP-level authentication and apcore's module-level authorization. Without it, `Context` is created without `Identity`, making ACL role/type-based conditions ineffective for external HTTP callers.
+
+**User Story:** As a platform engineer deploying an MCP server over HTTP, I want to require JWT authentication so that only authorized clients can call tools, and I want the caller's identity to flow through to apcore's ACL system.
+
+**Acceptance Criteria:**
+1. `serve()` accepts an optional `authenticator` parameter. When provided with an HTTP transport, requests without a valid Bearer token receive HTTP 401 with `WWW-Authenticate: Bearer`.
+2. `JWTAuthenticator(key, algorithms, audience, issuer, claim_mapping, require_claims)` validates JWT tokens. Token errors (expired, bad signature, missing claims) return `None`, never leak token content.
+3. `ClaimMapping` (frozen dataclass) configures how JWT claims map to `Identity` fields: `id_claim="sub"`, `type_claim="type"`, `roles_claim="roles"`, `attrs_claims=None`.
+4. On successful authentication, the resulting `Identity` is injected into the `Context` via a `ContextVar` bridge, making `context.identity` available to the Executor and ACL system.
+5. `/health` and `/metrics` endpoints are exempt from authentication by default. Exempt paths are configurable.
+6. `require_auth=False` (permissive mode) allows unauthenticated requests to proceed without identity, preserving backward compatibility.
+7. Non-HTTP ASGI scopes (WebSocket, lifespan) pass through without authentication.
+8. CLI provides `--jwt-secret`, `--jwt-algorithm`, `--jwt-audience`, `--jwt-issuer` flags.
+9. `Authenticator` is a `@runtime_checkable` Protocol, allowing custom authentication backends.
+10. A JWT validation library is added as a required dependency (e.g., `PyJWT>=2.0` for Python, `jsonwebtoken` for TypeScript, `golang-jwt` for Go).
+
+**Priority:** P2
+
+---
+
 **Feature Count Summary:**
 
 | Priority | Count | Features |
 |----------|-------|----------|
 | P0       | 9     | F-001 through F-009 |
 | P1       | 7     | F-010 through F-016 |
-| P2       | 10    | F-017 through F-026 |
-| **Total**| **26**|                      |
+| P2       | 11    | F-017 through F-027 |
+| **Total**| **27**|                      |
 
 ---
 
@@ -930,7 +956,7 @@ for tool_call in response.choices[0].message.tool_calls:
 | Pure dict output for OpenAI | `to_openai_tools()` returns `list[dict]` | No dependency on `openai` package. Users can pass the dicts directly to any OpenAI-compatible API client. Maximum interoperability. |
 | Single package, not two | MCP + OpenAI in one package | The OpenAI conversion logic is approximately 20-50 lines. Splitting into a separate package adds packaging overhead without benefit. |
 | Registry events for dynamic tools | Subscribe to `registry.on("register/unregister")` | Leverages apcore's existing event system. No polling or manual refresh needed. |
-| No custom auth layer | Rely on apcore Executor's ACL | apcore's ACL mechanism is already comprehensive (caller-based, pattern-matching, configurable policies). Adding another auth layer creates confusion. |
+| JWT auth bridges to apcore ACL | Optional `JWTAuthenticator` + `AuthMiddleware` at HTTP layer, Identity flows into Executor ACL | HTTP callers need a way to establish `Identity` for apcore's ACL. JWT at the transport layer feeds into the existing ACL system rather than replacing it. Custom backends via `Authenticator` protocol. |
 
 ### 8.3 Dependencies and Risks
 
@@ -975,7 +1001,7 @@ for tool_call in response.choices[0].message.tool_calls:
 - **Domain-specific node/function wrapping** -- that is the job of xxx-apcore projects (comfyui-apcore, vnpy-apcore, etc.).
 - **OpenAI API client or agent runtime** -- apcore-mcp exports tool definitions; the user's application handles API calls.
 - **A2A (Agent-to-Agent) adapter** -- this is a separate future project (apcore-a2a).
-- **Authentication/authorization beyond apcore ACL** -- no OAuth, API keys, or custom auth in apcore-mcp.
+- **OAuth / API key management** -- apcore-mcp provides JWT validation via `JWTAuthenticator` (F-027), but does not implement OAuth flows, API key issuance, or user management. Custom auth backends can be plugged in via the `Authenticator` protocol.
 - **Full-featured GUI or production dashboard** -- the optional MCP Tool Explorer (F-026) is a minimal developer debugging UI, not a production monitoring dashboard.
 - **Module execution outside the apcore Executor** -- all calls go through the Executor pipeline.
 
