@@ -1715,14 +1715,15 @@ class AuthMiddleware:
         app: ASGIApp,
         authenticator: Authenticator,
         *,
-        exempt_paths: set[str] | None = None,  # default: {"/health", "/metrics"}
+        exempt_paths: set[str] | None = None,      # default: {"/health", "/metrics"}
+        exempt_prefixes: set[str] | None = None,    # default: {} (auto-includes explorer prefix)
         require_auth: bool = True,
     ) -> None: ...
 ```
 
 - Skips non-HTTP scopes (WebSocket, lifespan) -- passthrough without authentication.
-- Exempt paths bypass authentication entirely.
-- On failure + `require_auth=True`: returns 401 JSON with `WWW-Authenticate: Bearer`.
+- Exempt paths (`exempt_paths`) and prefix matches (`exempt_prefixes`) bypass authentication entirely. When both Explorer and JWT auth are enabled, the Explorer prefix is auto-added to `exempt_prefixes` so browsing is exempt while execution enforces auth independently (see §6.10 cross-reference below).
+- On failure + `require_auth=True`: returns 401 JSON with `WWW-Authenticate: Bearer`. Emits `WARNING`-level log with the request path.
 - On failure + `require_auth=False`: forwards without identity (permissive mode).
 - ContextVar is always reset in `finally` block, even on exceptions.
 
@@ -1732,7 +1733,15 @@ class AuthMiddleware:
 - **factory.py:** `handle_call_tool` reads `auth_identity_var.get()` and adds to `extra["identity"]`.
 - **router.py:** `handle_call()` extracts `identity = extra.get("identity")` and passes to `Context.create(data=context_data, identity=identity)`.
 - **`serve()` / `MCPServer`:** Accept `authenticator` parameter, build middleware list when authenticator is provided + HTTP transport.
-- **CLI:** `--jwt-secret`, `--jwt-algorithm`, `--jwt-audience`, `--jwt-issuer` flags create `JWTAuthenticator`.
+- **CLI:** `--jwt-secret`, `--jwt-algorithm`, `--jwt-audience`, `--jwt-issuer`, `--jwt-key-file` (Python), `--jwt-require-auth`, `--exempt-paths` flags. Python CLI also reads `JWT_SECRET` env var as fallback.
+
+**Explorer + JWT dual auth pattern (cross-reference §6.10):**
+
+When both Explorer and JWT authentication are enabled, a dual auth pattern applies:
+- **AuthMiddleware** exempts the entire Explorer prefix via `exempt_prefixes`, allowing browser access to the Explorer UI without authentication.
+- **Explorer `call_tool`** handler authenticates each POST request independently using the same `Authenticator` instance, enforcing auth for tool execution and injecting identity into the execution context via `auth_identity_var`.
+
+This separation ensures browsing is frictionless while execution remains secured.
 
 **Cross-language implementation notes:**
 

@@ -2776,6 +2776,16 @@ Uses real apcore modules from `examples/extensions/` (greeting, math_calc, text_
 | TC-AUTH-INT-012 | Real modules build as MCP tools with auth enabled | P0 | FR-AUTH-005 |
 | TC-AUTH-INT-013 | All three real tools execute with identity in context | P0 | FR-AUTH-004 |
 
+### Explorer Auth Integration Tests (TC-AUTH-INT-014 to TC-AUTH-INT-018)
+
+| TC ID | Description | Priority | Traceability |
+|-------|-------------|----------|--------------|
+| TC-AUTH-INT-014 | Explorer GET `/explorer/` bypasses auth (no token required) | P0 | FR-AUTH-007 |
+| TC-AUTH-INT-015 | Explorer GET `/explorer/tools` bypasses auth (no token required) | P0 | FR-AUTH-007 |
+| TC-AUTH-INT-016 | Explorer POST `/explorer/tools/<name>/call` returns 401 without token when authenticator configured | P0 | FR-AUTH-007 |
+| TC-AUTH-INT-017 | Explorer POST `/explorer/tools/<name>/call` sets identity with valid token | P0 | FR-AUTH-007 |
+| TC-AUTH-INT-018 | Explorer GET endpoints remain exempt even with custom `exempt_paths` | P1 | FR-AUTH-003, FR-AUTH-007 |
+
 ---
 
 ## 10. Test Data Specification

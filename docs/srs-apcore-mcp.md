@@ -2448,6 +2448,7 @@ Authenticator.authenticate(headers: dict[str, str]) -> Identity | None
 | `app` | ASGI app | (required) | The wrapped application |
 | `authenticator` | `Authenticator` | (required) | Authentication backend |
 | `exempt_paths` | `set[str]` | `{"/health", "/metrics"}` | Paths that bypass auth |
+| `exempt_prefixes` | `set[str]` | `{}` | Path prefixes that bypass auth |
 | `require_auth` | `bool` | `True` | If False, unauthenticated requests proceed without identity |
 
 **Behavior:**
@@ -2493,8 +2494,24 @@ Authenticator.authenticate(headers: dict[str, str]) -> Identity | None
 | `--jwt-algorithm` | `str` | `"HS256"` | JWT algorithm |
 | `--jwt-audience` | `str` | `None` | Expected audience claim |
 | `--jwt-issuer` | `str` | `None` | Expected issuer claim |
+| `--jwt-key-file` | `path` | `None` | Path to PEM key file for JWT verification (Python only) |
+| `--jwt-require-auth` / `--no-jwt-require-auth` | `bool` | `True` | Require JWT auth; `False` enables permissive mode |
+| `--exempt-paths` | `str` | `None` | Comma-separated paths exempt from auth |
 
-**Behavior:** When `--jwt-secret` is provided, a `JWTAuthenticator` is created and passed to `serve(authenticator=...)`.
+**Behavior:** When `--jwt-secret` (or `--jwt-key-file` in Python, or `JWT_SECRET` env var) is provided, a `JWTAuthenticator` is created and passed to `serve(authenticator=...)`. Key resolution order: `--jwt-key-file` → `--jwt-secret` → `JWT_SECRET` env var.
+
+---
+
+#### FR-AUTH-007: Explorer Authentication
+
+**Description:** Explorer endpoints have a dual auth pattern: browsing is exempt from middleware, but tool execution enforces auth independently.
+
+**Behavior:**
+1. Explorer GET endpoints (page, tool list, tool detail) are exempt from auth middleware via `exempt_prefixes`.
+2. Explorer POST `/explorer/tools/<name>/call` authenticates per-request when `authenticator` is provided to the Explorer handler.
+3. On auth failure, returns 401 JSON with `WWW-Authenticate: Bearer` header.
+4. On auth success, sets `auth_identity_var` ContextVar for identity injection into the execution context.
+5. When no authenticator is configured, tool execution proceeds without authentication.
 
 ---
 

@@ -772,6 +772,7 @@ The key motivation is ecosystem scale: as the number of `xxx-apcore` projects gr
 9. Explorer is only available for HTTP-based transports; ignored for stdio.
 10. The HTML/JS UI is language-agnostic and can be shared across all `apcore-mcp-{lang}` implementations.
 11. `explorer_prefix` is configurable (default `/explorer`); all Explorer endpoints are mounted under this prefix.
+12. Explorer GET endpoints are exempt from JWT authentication. `POST /explorer/tools/<name>/call` enforces auth when authenticator is configured.
 
 **Priority:** P2
 
@@ -792,10 +793,10 @@ This feature bridges the gap between HTTP-level authentication and apcore's modu
 2. `JWTAuthenticator(key, algorithms, audience, issuer, claim_mapping, require_claims)` validates JWT tokens. Token errors (expired, bad signature, missing claims) return `None`, never leak token content.
 3. `ClaimMapping` (frozen dataclass) configures how JWT claims map to `Identity` fields: `id_claim="sub"`, `type_claim="type"`, `roles_claim="roles"`, `attrs_claims=None`.
 4. On successful authentication, the resulting `Identity` is injected into the `Context` via a `ContextVar` bridge, making `context.identity` available to the Executor and ACL system.
-5. `/health` and `/metrics` endpoints are exempt from authentication by default. Exempt paths are configurable.
+5. `/health`, `/metrics`, and Explorer browsing endpoints (GET) are exempt from authentication by default. Exempt paths are configurable via `exempt_paths`/`exempt_prefixes` parameters.
 6. `require_auth=False` (permissive mode) allows unauthenticated requests to proceed without identity, preserving backward compatibility.
 7. Non-HTTP ASGI scopes (WebSocket, lifespan) pass through without authentication.
-8. CLI provides `--jwt-secret`, `--jwt-algorithm`, `--jwt-audience`, `--jwt-issuer` flags.
+8. CLI provides `--jwt-secret`, `--jwt-algorithm`, `--jwt-audience`, `--jwt-issuer`, `--jwt-key-file` (Python), `--jwt-require-auth`, and `--exempt-paths` flags.
 9. `Authenticator` is a `@runtime_checkable` Protocol, allowing custom authentication backends.
 10. A JWT validation library is added as a required dependency (e.g., `PyJWT>=2.0` for Python, `jsonwebtoken` for TypeScript, `golang-jwt` for Go).
 
