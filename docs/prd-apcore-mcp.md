@@ -3,8 +3,8 @@
 | Field       | Value                                                        |
 |-------------|--------------------------------------------------------------|
 | Title       | apcore-mcp: Automatic MCP Server & OpenAI Tools Bridge       |
-| Version     | 1.0                                                          |
-| Date        | 2026-02-15                                                   |
+| Version     | 1.3                                                          |
+| Date        | 2026-02-27                                                   |
 | Author      | aipartnerup Product Team                                     |
 | Status      | Draft                                                        |
 | Reviewers   | apcore Core Maintainers, Community Contributors              |

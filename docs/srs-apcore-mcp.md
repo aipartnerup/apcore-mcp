@@ -4,21 +4,24 @@
 |-------------|--------------------------------------------------------------------------|
 | Title       | apcore-mcp: Automatic MCP Server & OpenAI Tools Bridge                   |
 | Document    | Software Requirements Specification (SRS)                                |
-| Version     | 1.0                                                                      |
-| Date        | 2026-02-15                                                               |
+| Version     | 1.3                                                                      |
+| Date        | 2026-02-27                                                               |
 | Author      | aipartnerup Engineering Team                                             |
 | Status      | Draft                                                                    |
-| PRD Ref     | `docs/prd-apcore-mcp.md` v1.0                                           |
-| Tech Design | `docs/tech-design-apcore-mcp.md` v1.0                                   |
+| PRD Ref     | `docs/prd-apcore-mcp.md` v1.3                                           |
+| Tech Design | `docs/tech-design-apcore-mcp.md` v1.3                                   |
 | Standard    | IEEE 830 / ISO/IEC/IEEE 29148                                            |
 
 ---
 
 ## Revision History
 
-| Version | Date       | Author                      | Description                  |
-|---------|------------|------------------------------|------------------------------|
-| 1.0     | 2026-02-15 | aipartnerup Engineering Team | Initial draft                |
+| Version | Date       | Author                      | Description                                                                 |
+|---------|------------|------------------------------|-----------------------------------------------------------------------------|
+| 1.0     | 2026-02-15 | aipartnerup Engineering Team | Initial draft                                                               |
+| 1.1     | 2026-02-23 | aipartnerup Engineering Team | Streaming bridge spec; expanded feature count; updated naming conventions   |
+| 1.2     | 2026-02-25 | aipartnerup Engineering Team | MCP Tool Explorer feature; response key changed from "output" to "result"   |
+| 1.3     | 2026-02-27 | aipartnerup Engineering Team | JWT Authentication (F-027): Authenticator protocol, JWTAuthenticator, AuthMiddleware |
 
 ---
 
