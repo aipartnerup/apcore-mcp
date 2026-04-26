@@ -132,31 +132,39 @@ When the request carries `_meta.trace == true`, `version_hint` may be unavailabl
 
 ## Cancellation Handling
 
-The Execution Router implements bidirectional cancellation, bridging the MCP `notifications/cancelled` protocol message to apcore's cooperative `CancelToken` model (see apcore cancellation feature). This allows an AI agent to abort an in-flight tool call, and ensures long-running modules stop within the grace period.
+> **Status (v0.14.0):** the bidirectional `ExecutionRouter.cancel(call_id, reason)` API previously sketched in this section is **not yet implemented**. Today, `notifications/cancelled` handling lives at the transport layer in Rust only; Python and TypeScript do not parse or forward the notification. This section now describes **actual** behavior at v0.14.0; the more ambitious design previously documented is preserved in the Roadmap subsection below for tracking.
 
-### call_id to CancelToken Map
-The router maintains a per-server `Dict[call_id, CancelToken]` (guarded by a lock). On tool-call entry, the router:
-1. Generates/extracts the MCP `call_id` (from `request.id` or `_meta.progressToken`).
-2. Creates a fresh `CancelToken`, inserts it into the map, and attaches it to the `Context` via `Context.create(cancel_token=token)` so apcore's executor propagates it to child calls.
-3. On completion (success or failure), removes the entry in a `finally` block to prevent leaks.
+### What works today (v0.14.0)
 
-### Handling notifications/cancelled
-When the Transport Manager receives a `notifications/cancelled` message with `requestId`, it forwards it to `ExecutionRouter.cancel(call_id, reason)`. The router:
-1. Looks up the `CancelToken` for that `call_id`.
-2. Calls `token.cancel()` — cooperative signal picked up by the module's next `token.check()`.
-3. Also calls `executor.cancel(call_id)` (when available on apcore >= 0.19) so the executor can short-circuit timers and middleware.
-4. Emits a `mcp.call.cancelled` observability event with the reason.
+- **Process-level cancellation (stdio):** When the parent MCP client closes the stdio pipe, the transport manager exits the read loop and the server shuts down. In-flight tool calls are abandoned (no cooperative drain). All three SDKs (Python, TypeScript, Rust) behave this way.
+- **Async-task cancellation (Rust only):** Rust's `TransportManager` accepts a `cancel_handler` callback (`set_cancel_handler` / `notify_cancel`). At server build time, `apcore_mcp::APCoreMCP` wires this callback to `AsyncTaskBridge::cancel_session_tasks(session_key)` and `AsyncTaskBridge::cancel(task_id)`. When an MCP `notifications/cancelled` message is received, async-task-bridge tasks bound to that session are cooperatively cancelled. **Synchronous** tool calls (those routed through `ExecutionRouter::handle_call`) are NOT cancelled — there is no `CancelToken` map and no `ContextVar` propagation. Python and TypeScript SDKs do not implement this at all.
+- **Error mapping for explicit `ExecutionCancelledError`:** if a module itself raises `ExecutionCancelledError` (e.g., on a timeout), the router catches it and forwards to the Error Mapper, which emits MCP error code `EXECUTION_CANCELLED`. This is downstream-only; nothing in the router *initiates* cancellation in response to MCP `notifications/cancelled`.
 
-### ContextVar Propagation
-The router sets the active `CancelToken` in a `ContextVar` before awaiting `Executor.call_async()`. This ensures the token is visible across `asyncio.to_thread()` boundaries and nested module invocations without threading it through every call signature.
+### What does NOT work today
 
-### Race Cases
-- **Before-start**: Cancel arrives before the token is registered. The router stores a tombstone `{call_id: CANCELLED}`; the entry handler sees it, creates an already-cancelled token, and raises `ExecutionCancelledError` immediately without invoking the module.
-- **After-complete**: Cancel arrives after the entry is removed. The router treats it as a no-op and logs at `debug`.
-- **Concurrent cancel**: `CancelToken.cancel()` is idempotent and thread-safe; duplicate notifications are absorbed.
+- `ExecutionRouter.cancel(call_id, reason)` — the method does not exist in any of the three SDKs (Python, TypeScript, Rust).
+- A per-server `Dict[call_id, CancelToken]` map — there is no such map in any SDK.
+- `ContextVar` propagation of an active `CancelToken` across `asyncio.to_thread()` boundaries — not implemented.
+- Cancellation of synchronous tool calls via MCP `notifications/cancelled` — not supported in any transport in any SDK.
+- A "tombstone" race-handling pattern for cancel-before-start — not implemented (and unnecessary without the token map).
 
-### Error Mapping
-`ExecutionCancelledError` raised inside the pipeline is caught by the router and forwarded to the Error Mapper, which emits an MCP error response with code `EXECUTION_CANCELLED` (mapped to JSON-RPC error `-32800` "Request cancelled" per MCP spec). The `CallToolResult` is **not** returned on cancellation; the MCP SDK discards the response for the cancelled `requestId`.
+If your client code relied on the previously-documented behavior, you will need to either (a) wait for the planned 0.15.0 implementation tracked below, or (b) implement client-side timeouts as the only reliable cancellation primitive at v0.14.0.
+
+### Roadmap (planned for 0.15.0)
+
+The following design is preserved verbatim from earlier drafts as the implementation target:
+
+- A per-server `Dict[call_id, CancelToken]` (guarded by a lock). On tool-call entry, the router generates/extracts the MCP `call_id`, creates a fresh `CancelToken`, inserts into the map, and attaches it to the `Context` via `Context.create(cancel_token=token)`. On completion the entry is removed in `finally`.
+- An `ExecutionRouter.cancel(call_id, reason)` method that:
+  1. Looks up the `CancelToken` for `call_id`.
+  2. Calls `token.cancel()` (cooperative signal picked up by the module's next `token.check()`).
+  3. Also calls `executor.cancel(call_id)` when the apcore feature is available.
+  4. Emits a `mcp.call.cancelled` observability event with the reason.
+- `ContextVar` propagation so the active token is visible across `asyncio.to_thread()` boundaries.
+- Race handling: before-start tombstones, after-complete no-op-with-debug, idempotent concurrent-cancel.
+- Cross-transport parity (stdio, streamable-http, sse) — all transports parse `notifications/cancelled` and forward to `ExecutionRouter.cancel`.
+
+The `EXECUTION_CANCELLED` error code is already reserved in all three SDKs for this purpose; only the dispatcher half of the contract remains to be implemented.
 
 ## Notes
 
