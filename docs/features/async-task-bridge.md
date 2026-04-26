@@ -52,10 +52,12 @@ The Async Task Bridge exposes apcore's `AsyncTaskManager` (see apcore `docs/feat
 
 | Tool | Arguments | Behavior |
 |------|-----------|----------|
-| `__apcore_task_submit` | `module_id: str`, `arguments: object`, `version_hint?: str` | Explicit submission path. Returns `{task_id, status: "pending"}`. |
-| `__apcore_task_status` | `task_id: str` | Returns the `TaskInfo` projection; includes `result` when `completed`, `error` when `failed`. |
-| `__apcore_task_cancel` | `task_id: str` | Calls `AsyncTaskManager.cancel()`. Returns `{task_id, cancelled: bool}`. |
+| `__apcore_task_submit` | `module_id: str` (required), `arguments?: object` (default `{}`), `version_hint?: str` | Explicit submission path. Returns `{task_id, status: "pending"}`. |
+| `__apcore_task_status` | `task_id: str` (required) | Returns the `TaskInfo` projection; includes `result` when `completed`, `error` when `failed`. |
+| `__apcore_task_cancel` | `task_id: str` (required) | Calls `AsyncTaskManager.cancel()`. Returns `{task_id, cancelled: bool}`. |
 | `__apcore_task_list` | `status?: "pending"\|"running"\|"completed"\|"failed"\|"cancelled"` | Returns `{tasks: TaskInfo[]}`. |
+
+`arguments` is **optional** on `__apcore_task_submit` — callers may submit a module with no inputs. All three SDKs (Python, TypeScript, Rust) advertise schemas with `required: ["module_id"]` only and `additionalProperties: false`.
 
 Meta-tool names are reserved (double-underscore `__apcore_` prefix) and MUST NOT collide with user-registered modules; the MCP Server Factory rejects any module whose id starts with `__apcore_`.
 

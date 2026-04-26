@@ -90,6 +90,16 @@ When `middlewares` is provided, the factory passes the list through to the `Exec
 ### Strict Schema Sourcing
 When building MCP tools, the factory prefers `Registry.exportSchema(moduleId, strict=true)` if the registry exposes it, using the registry-provided strict schema directly as the MCP `inputSchema`. If the call fails or the registry does not implement `exportSchema`, the factory falls back to local strict post-processing via the Schema Converter (see `docs/features/schema-converter.md`, "Strict Mode for MCP"). Both upstream behaviors yield identical strict output — the registry path is preferred because it avoids a redundant walk.
 
+**Per-SDK status (v0.14.0):**
+
+| SDK | `Registry.exportSchema(strict=true)` | Behavior |
+|---|---|---|
+| Python | available on `apcore.registry.Registry` | Factory prefers registry path; falls back to local converter on miss/exception. |
+| TypeScript | available on `apcore-js`'s `Registry` interface | Factory prefers registry path; falls back to local converter. |
+| Rust | NOT available — apcore Rust's `Registry::export_schema(name)` does not accept a `strict` parameter | Factory always uses local strict post-processing via the Schema Converter. Aligning the Rust apcore Registry API with Python/TS is tracked separately. |
+
+The output of all three SDKs is functionally equivalent strict JSON Schema; the divergence is purely in *which layer performs the strict transformation*, not in the result.
+
 ## Constraints
 
 - **Name Constraint**: The server name must be non-empty and must not exceed 255 characters.
