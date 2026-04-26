@@ -132,7 +132,7 @@ When the request carries `_meta.trace == true`, `version_hint` may be unavailabl
 
 ## Cancellation Handling
 
-> **Status (v0.14.0):** the bidirectional `ExecutionRouter.cancel(call_id, reason)` API previously sketched in this section is **not yet implemented**. Today, `notifications/cancelled` handling lives at the transport layer in Rust only; Python and TypeScript do not parse or forward the notification. This section now describes **actual** behavior at v0.14.0; the more ambitious design previously documented is preserved in the Roadmap subsection below for tracking.
+> **Status (v0.14.x, post-sync):** The `ExecutionRouter.cancel(call_id, reason)` public API now exists in all three SDKs (Python `ExecutionRouter.cancel`, TypeScript `ExecutionRouter.cancel`, Rust `ExecutionRouter::cancel_call`). It maintains a per-server `call_id → CancelToken` map with tombstone semantics for race cases. **What's not yet wired end-to-end:** handle_call's automatic registration of a token per call (planned next), and transport-layer parsing of MCP `notifications/cancelled` to call `router.cancel(...)` (deferred — MCP SDKs handle low-level cancellation internally without exposing app-level hooks). Direct callers can already invoke `router.cancel(call_id)` to mark an in-flight token as cancelled.
 
 ### What works today (v0.14.0)
 
