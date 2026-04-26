@@ -1096,14 +1096,58 @@ The wire format uses camelCase (`retryable`, `aiGuidance`, `userFixable`, `sugge
 
 ---
 
+#### F-042: Extension Bridge
+
+**Title:** Centralized wiring of apcore ExtensionManager into the MCP server pipeline
+
+**Description:** Formalizes the integration seam between apcore's `ExtensionManager` and the MCP server pipeline. Owns wiring caller-supplied extensions (ACLs, approval handlers, module validators, discoverers, span exporters, middleware, and MCP-specific adapter hooks) into a fully configured `Executor` and `MCPServerFactory`. Centralizes resolution precedence (kwarg > ExtensionManager registration > built-in default), load-order policy (extensions before built-in MCP middleware), and type-safety guarantees so individual features (Server Factory, Execution Router, Transport Manager) never need to know about `ExtensionManager` directly. See `docs/features/extension-bridge.md` for the full spec.
+
+**User Story:** As a platform team, I want a single, documented integration seam for plugging custom ACLs, approval flows, and adapters into apcore-mcp without forking the factory or duplicating the wiring across each apcore-mcp release.
+
+**Acceptance Criteria:**
+1. `serve(registry, extensions=ExtensionManager(...))` invokes `extensions.apply(registry, executor)` before built-in middleware installation.
+2. Adapter hook resolution precedence: explicit `serve()` kwarg > `ExtensionManager.get("mcp_*")` > built-in default; ambiguity (1+2 both present and unequal) emits a WARN log.
+3. Load order: `apply()` first → built-in middleware second → adapter hook binding third → protocol handlers fourth. Built-in middleware always runs closest to the module boundary.
+4. When `extensions=None`, the bridge is a no-op for the apply step (canonical zero-config path).
+5. Type mismatches on the three MCP-specific hooks (`schema_converter`, `annotation_mapper`, `error_mapper`) raise `TypeError` before the server socket is opened — no half-configured server.
+6. Implementation parity across Python, TypeScript, and Rust SDKs (only the type-check mechanism differs: isinstance / duck-type / trait bound).
+
+**Priority:** P1
+
+---
+
+#### F-043: Async Task Bridge
+
+**Title:** Route async-hinted modules through apcore's AsyncTaskManager and expose `__apcore_task_*` meta-tools
+
+**Description:** Routes apcore modules whose descriptor carries an async hint (`metadata.async == true` or `annotations.extra["mcp_async"] == "true"`) through `AsyncTaskManager.submit()` instead of the synchronous `Executor.call_async()` path. Returns an immediate `{"task_id", "status": "pending"}` envelope and exposes four reserved meta-tools (`__apcore_task_submit`, `__apcore_task_status`, `__apcore_task_cancel`, `__apcore_task_list`) that wrap the manager API. Progress notifications fan out via MCP `notifications/progress` when the caller supplies `_meta.progressToken`. See `docs/features/async-task-bridge.md` for the full spec.
+
+**User Story:** As an AI agent, I want to submit long-running module invocations without blocking the stdio/HTTP transport, then poll for status, cancel, or list pending tasks via dedicated meta-tools.
+
+**Acceptance Criteria:**
+1. Modules with `metadata.async == true` OR `annotations.extra["mcp_async"] == "true"` (boolean or string `"true"`) are detected as async-hinted.
+2. `__apcore_task_submit` against an async-hinted module returns `{task_id, status: "pending"}` and queues the call via `AsyncTaskManager.submit()`.
+3. `__apcore_task_submit` against a non-async-hinted module returns `ASYNC_MODULE_NOT_ASYNC` (when descriptor lookup is wired).
+4. `__apcore_task_status(task_id)` returns the projected `TaskInfo` (task_id, module_id, status, timestamps); inlines `result` on `completed`, `error` on `failed`, with redaction applied to result via the registered output schema.
+5. `__apcore_task_cancel(task_id)` calls `AsyncTaskManager.cancel()`; returns `{task_id, cancelled}`.
+6. `__apcore_task_list(status?)` returns `{tasks: [...]}` filtered by optional status enum (rejects unknown filter values).
+7. The four meta-tool names are reserved — `MCPServerFactory.build_tool` rejects any module id starting with `__apcore_`.
+8. Capacity-exceeded errors map to `ASYNC_CAPACITY_EXCEEDED`; missing task_ids map to `ASYNC_TASK_NOT_FOUND`.
+9. Progress fan-out: when `_meta.progressToken` is supplied, terminal-state events fire via `notifications/progress`.
+10. Transport-disconnect cleanup: `cancelSessionTasks(sessionKey)` cancels any tasks bound to a disconnected session.
+
+**Priority:** P1
+
+---
+
 **Feature Count Summary:**
 
 | Priority | Count | Features |
 |----------|-------|----------|
 | P0       | 9     | F-001 through F-009 |
-| P1       | 11    | F-010 through F-016, F-032, F-036, F-038 |
+| P1       | 13    | F-010 through F-016, F-032, F-036, F-038, F-042, F-043 |
 | P2       | 21    | F-017 through F-031, F-033 through F-035, F-037, F-039 through F-041 |
-| **Total**| **41**|                      |
+| **Total**| **43**|                      |
 
 ---
 
