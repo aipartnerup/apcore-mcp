@@ -4,12 +4,12 @@
 |-------------|--------------------------------------------------------------------------|
 | Title       | apcore-mcp: Automatic MCP Server & OpenAI Tools Bridge                   |
 | Document    | Software Requirements Specification (SRS)                                |
-| Version     | 1.8                                                                      |
-| Date        | 2026-04-06                                                               |
+| Version     | 1.9                                                                      |
+| Date        | 2026-04-23                                                               |
 | Author      | aiperceivable Engineering Team                                             |
 | Status      | Draft                                                                    |
-| PRD Ref     | `docs/prd-apcore-mcp.md` v1.7                                           |
-| Tech Design | `docs/tech-design-apcore-mcp.md` v1.7                                   |
+| PRD Ref     | `docs/prd-apcore-mcp.md` v1.8                                           |
+| Tech Design | `docs/tech-design-apcore-mcp.md` v1.8                                   |
 | Standard    | IEEE 830 / ISO/IEC/IEEE 29148                                            |
 
 ---

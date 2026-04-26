@@ -3,12 +3,12 @@
 | Field       | Value                                                        |
 |-------------|--------------------------------------------------------------|
 | Title       | apcore-mcp Test Plan & Test Cases                            |
-| Version     | 1.6                                                          |
-| Date        | 2026-04-06                                                   |
+| Version     | 1.7                                                          |
+| Date        | 2026-04-23                                                   |
 | Author      | aiperceivable QA Team                                          |
 | Status      | Draft                                                        |
-| PRD Ref     | `docs/prd-apcore-mcp.md` v1.7                               |
-| Tech Design | `docs/tech-design-apcore-mcp.md` v1.7                       |
+| PRD Ref     | `docs/prd-apcore-mcp.md` v1.8                               |
+| Tech Design | `docs/tech-design-apcore-mcp.md` v1.8                       |
 | License     | Apache 2.0                                                   |
 
 ---
