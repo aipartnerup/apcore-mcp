@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-04-23
+
+### Added
+
+- **2 new features (F-042, F-043)** leveraging apcore 0.19.0 + apcore-toolkit 0.5.0:
+  - **Extension Bridge** (F-042, P1) — formalizes `ExtensionManager → MCPServerFactory` wiring; centralizes resolution precedence (kwarg > ExtensionManager > built-in default) for `schema_converter`, `annotation_mapper`, `error_mapper`, and the load-order policy (extensions first, built-in middleware second). See `docs/features/extension-bridge.md`.
+  - **Async Task Bridge** (F-043, P1) — routes async-hinted modules (`metadata.async == true` or `annotations.extra.mcp_async == "true"`) to apcore's `AsyncTaskManager.submit()` via four reserved meta-tools (`__apcore_task_submit`, `__apcore_task_status`, `__apcore_task_cancel`, `__apcore_task_list`). Progress fan-out via `_meta.progressToken`. See `docs/features/async-task-bridge.md`.
+- **W3C Trace Context propagation** — inbound `_meta.traceparent` is parsed into the apcore `Context.trace_parent`; outbound responses carry a freshly-minted `_meta.traceparent` so MCP clients can correlate trace chains across module boundaries (Python only at v0.14.0; TypeScript and Rust parse inbound but do not yet inject outbound — tracked in cross-language sync report).
+- **Observability auto-wiring** — `serve(observability=True)` / `APCoreMCP(observability=True)` instantiate `MetricsCollector` + `MetricsMiddleware` and `UsageCollector` + `UsageMiddleware` on the Executor and expose `/{explorer_prefix}/api/usage` (and `/api/usage/{module_id}`) endpoints. CLI flag `--observability` toggles the same.
+- **isinstance-based error dispatch** — `ErrorMapper` dispatches `TaskLimitExceededError`, `DependencyNotFoundError`, and `DependencyVersionMismatchError` via class checks against apcore 0.19 error classes (no longer duck-typed by code).
+- **Expanded `ModuleAnnotations` surfacing** — `cache_ttl`, `cache_key_fields`, and `pagination_style` now appear in the description annotation block when non-default; aligns with apcore 0.19's 12-field `ModuleAnnotations`.
+- **4 new error code mappings** — `DEPENDENCY_NOT_FOUND`, `DEPENDENCY_VERSION_MISMATCH`, `TASK_LIMIT_EXCEEDED` (with `retryable: True`), `VERSION_CONSTRAINT_INVALID`.
+
+### Changed
+
+- **Dependency bump**: requires `apcore >= 0.19.0` (was `>= 0.17.1`) for `AsyncTaskManager`, `TraceContext`, `Context.create(trace_parent=...)`, the 12-field `ModuleAnnotations`, and the new dependency/binding error classes.
+- **New optional dependency**: `apcore-toolkit >= 0.5.0` — provides `BindingLoader`/`BindingParser` and `ScannedModule.display` for consumers loading `.binding.yaml` files. Not wired by apcore-mcp itself; available transitively for downstream callers.
+- `ExecutionRouter.handle_call` response `content` item type widened from `list[dict[str, str]]` to `list[dict[str, Any]]` to carry the optional `_meta` field. Translated to MCP `TextContent.meta` on the wire.
+- `MCPServerFactory.register_handlers` gains optional `async_bridge` and `descriptor_lookup` kwargs (Python). Backward-compatible: when omitted, behavior is unchanged.
+- Updated PRD to v1.8 (43 features), SRS to v1.9, Tech Design to v1.8, Test Plan to v1.7.
+- Feature count: P0=9, P1=13, P2=21, Total=43.
+
+### Known cross-language gaps (tracked, will be reconciled in 0.15.0)
+
+- **F-043 Async Task Bridge** — Python `ExecutionRouter` does not yet integrate the bridge; async-hinted modules fall through to the synchronous `executor.call_async` path. TypeScript dispatches via dynamic descriptor lookup; Rust dispatches via a static `async_module_ids` set frozen at router construction (stale on registry mutations). See sync report for parity plan.
+- **`ExecutionRouter.cancel(call_id, reason)`** spec'd in `docs/features/execution-router.md` is not implemented in any SDK at v0.14.0. Only Rust's `TransportManager` has transport-level cancel forwarding (routes to `AsyncTaskBridge`, not `ExecutionRouter`). Spec section is being rewritten in this release to reflect actual behavior.
+
+---
+
 ## [0.13.0] - 2026-04-06
 
 ### Added
