@@ -3,13 +3,15 @@
 | Field       | Value                                                                    |
 |-------------|--------------------------------------------------------------------------|
 | Title       | apcore-mcp: Automatic MCP Server & OpenAI Tools Bridge                   |
-| Version     | 1.8                                                                      |
-| Date        | 2026-04-23                                                               |
+| Version     | 1.9                                                                      |
+| Date        | 2026-04-28                                                               |
 | Author      | aiperceivable Engineering Team                                             |
 | Status      | Draft                                                                    |
 | Reviewers   | apcore Core Maintainers, Community Contributors                          |
 | PRD Ref     | `docs/prd-apcore-mcp.md` v1.8                                           |
 | License     | Apache 2.0                                                               |
+
+> **v1.9 — 2026-04-28 (released as 0.14.0)**: cross-language deferred-modules sync. JWT-1 `Authenticator(headers: HeaderMap)` unification; OC-5 Rust `convert_registry(&apcore::Registry)` (canonical); TM-4 Python `TransportManager.set_async_task_bridge(...)` + `transport_session_var`; AH-1 Rust per-request elicit `tokio::task_local!`; EM-3 hardcoded `userFixable` for dependency/binding/version-constraint codes; EM-6 Rust `to_mcp_error_any` generic-error fallback; MID-5 bijection-guarded denormalize variants; OC-1 TS strict-mode walker parity (apcore `to_strict_schema` semantics); EB-2 adapter-hook kwargs (`schema_converter` / `annotation_mapper` / `error_mapper`) on `serve()`/`async_serve()` in Python+TS. mcp-embedded-ui dep raised to >=0.4.0 (provides `POST /tools/{name}/validate`). EB-1 (`ExtensionManager.apply()`) and Rust EB-2 deferred to a future release.
 
 ---
 
@@ -1793,12 +1795,14 @@ class JWTAuthenticator:
         require_claims: list[str] | None = None,     # default: ["sub"]
     ) -> None: ...
 
-    def authenticate(self, headers: dict[str, str]) -> Identity | None: ...
+    async def authenticate(self, headers: dict[str, str]) -> Identity | None: ...
 ```
 
 `ClaimMapping` (frozen dataclass): `id_claim="sub"`, `type_claim="type"`, `roles_claim="roles"`, `attrs_claims=None`.
 
-**Error handling:** All `jwt.InvalidTokenError` subclasses produce `None` return, never leak token content.
+**Error handling:** All `jwt.InvalidTokenError` subclasses produce `None` return, never leak token content. Decoding uses a 30-second clock-skew leeway (post-JWT-3).
+
+**Async unification (post-JWT-1):** All three SDKs expose `authenticate` as **async** taking a flat header map. Python's `Authenticator` Protocol is async; the `call_authenticator(auth, headers)` helper bridges legacy sync implementations transparently by detecting coroutine returns. TypeScript has always been `Promise<Identity | null>`; Rust uses `#[async_trait]` with `&HashMap<String, String>`.
 
 #### 6.11.3 AuthMiddleware
 

@@ -4,8 +4,8 @@
 |-------------|--------------------------------------------------------------------------|
 | Title       | apcore-mcp: Automatic MCP Server & OpenAI Tools Bridge                   |
 | Document    | Software Requirements Specification (SRS)                                |
-| Version     | 1.9                                                                      |
-| Date        | 2026-04-23                                                               |
+| Version     | 2.0                                                                      |
+| Date        | 2026-04-28                                                               |
 | Author      | aiperceivable Engineering Team                                             |
 | Status      | Draft                                                                    |
 | PRD Ref     | `docs/prd-apcore-mcp.md` v1.8                                           |
@@ -27,6 +27,8 @@
 | 1.6     | 2026-03-31 | aiperceivable Engineering Team | apcore 0.15.0 upgrade: Config Bus namespace (F-033), Error Formatter Registry (F-034), dot-namespaced events (F-035), 6 new error codes, apcore >= 0.15.1 |
 | 1.7     | 2026-04-05 | aiperceivable Engineering Team | apcore 0.17.0 upgrade: Pipeline v2 delegation, 11-step pipeline (safety_check → call_chain_guard rename, middleware_before before input_validation), Step metadata, YAML pipeline config, PipelineContext fields, StepTrace.skip_reason, sensitive field redaction utility, apcore >= 0.17.0 |
 | 1.8     | 2026-04-06 | aiperceivable Engineering Team | apcore 0.17.0 feature integration: Pipeline Strategy (F-036), Trace Exposure (F-037), Output Redaction (F-038), Preflight Validation (F-039), YAML Pipeline Config (F-040), Annotation Metadata Passthrough (F-041), 4 new error mappings, 2 new NFRs |
+| 1.9     | 2026-04-23 | aiperceivable Engineering Team | apcore 0.19.0 + apcore-toolkit 0.5.0: Extension Bridge (F-042) and Async Task Bridge (F-043) requirements; FR-EXTMGR-001..003, FR-ASYNC-001..006 added; isinstance-based error dispatch; W3C Trace Context propagation; observability auto-wiring |
+| 2.0     | 2026-04-28 | aiperceivable Engineering Team | Cross-language deferred-modules sync (released as 0.14.0): mcp-embedded-ui 0.4.0 dependency raised + `/validate` endpoint flow-through; cross-SDK API unification (JWT-1 `Authenticator` headers-map signature, OC-5 Rust `convert_registry` Registry-trait input); Python TM-4 transport-disconnect cancellation forwarding; EM-3 hardcoded `userFixable` for dependency/binding errors; EM-6 Rust generic-error fallback; MID-5 bijection-guarded denormalize variants; OC-1 TS strict-mode walker parity; AH-1 Rust per-request elicit task-local; EB-2 adapter-hook kwargs in `serve()` (Python+TS) |
 
 ---
 
@@ -49,7 +51,7 @@
 
 ### 1.1 Purpose
 
-This Software Requirements Specification defines the complete functional and non-functional requirements for **apcore-mcp**, an independent Python adapter package that automatically bridges any apcore Module Registry into both a fully functional MCP (Model Context Protocol) Server and OpenAI-compatible tool definitions. This document formalizes 20 of 25 features from the upstream PRD (F-001 through F-020) into traceable, testable requirements organized by component module. P2 features F-021 through F-025 are deferred to a future SRS revision. It serves as the authoritative reference for implementation, testing, and acceptance of apcore-mcp v0.9.0.
+This Software Requirements Specification defines the complete functional and non-functional requirements for **apcore-mcp**, an independent adapter package available in Python, TypeScript, and Rust that automatically bridges any apcore Module Registry into both a fully functional MCP (Model Context Protocol) Server and OpenAI-compatible tool definitions. This document formalizes 46 features from the upstream PRD (F-001 through F-046) into traceable, testable requirements organized by component module. It serves as the authoritative reference for implementation, testing, and acceptance of apcore-mcp v0.14.0.
 
 The intended audience includes software engineers implementing apcore-mcp, QA engineers writing test plans, and project stakeholders evaluating feature completeness.
 
@@ -2591,10 +2593,10 @@ The MCP Tool Explorer is an optional, built-in browser UI that allows developers
 
 **Interface:**
 ```
-Authenticator.authenticate(headers: dict[str, str]) -> Identity | None
+async Authenticator.authenticate(headers: dict[str, str]) -> Identity | None
 ```
 
-**Behavior:** Accepts lowercase header keys. Returns `Identity` on success, `None` on failure. Must not raise exceptions.
+**Behavior:** Async. Accepts lowercase header keys. Returns `Identity` on success, `None` on failure. Must not raise exceptions. (Unified across Python/TypeScript/Rust per JWT-1: Python's `Authenticator.authenticate` is now `async`; legacy sync implementations are bridged transparently via the `call_authenticator(auth, headers)` helper which detects coroutine returns.)
 
 ---
 
@@ -2615,10 +2617,11 @@ Authenticator.authenticate(headers: dict[str, str]) -> Identity | None
 **ClaimMapping fields:** `id_claim="sub"`, `type_claim="type"`, `roles_claim="roles"`, `attrs_claims=None`.
 
 **Behavior:**
-1. Extracts Bearer token from `Authorization` header (case-insensitive prefix).
-2. Decodes and validates token using a JWT library.
-3. Maps claims to `Identity(id, type, roles, attrs)`.
-4. Returns `None` on any error (expired, bad signature, missing claims) -- never leaks token content.
+1. `JWTAuthenticator.authenticate` is **async** (post-JWT-1) — `async def authenticate(headers: dict[str, str]) -> Identity | None` in Python; `async authenticate(headers: Record<string, string>): Promise<Identity | null>` in TypeScript; `async fn authenticate(&self, headers: &HashMap<String, String>) -> Option<Identity>` in Rust.
+2. Extracts Bearer token from `Authorization` header (case-insensitive prefix).
+3. Decodes and validates token using a JWT library, with a 30-second clock-skew leeway (post-JWT-3).
+4. Maps claims to `Identity(id, type, roles, attrs)`.
+5. Returns `None` on any error (expired, bad signature, missing claims) -- never leaks token content.
 
 ---
 
