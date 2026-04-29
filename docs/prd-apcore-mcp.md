@@ -1140,14 +1140,62 @@ The wire format uses camelCase (`retryable`, `aiGuidance`, `userFixable`, `sugge
 
 ---
 
+### F-044: Bidirectional Cancellation
+
+**Description:** Cooperative cancellation across the MCP boundary. Inbound MCP `notifications/cancelled` propagates into the apcore execution pipeline so modules can observe `context.cancelToken.isCancelled` and exit gracefully; the public `ExecutionRouter.cancel(call_id, reason)` API gives integrators a programmatic cancel path; FIFO-bounded eviction at 4096 entries prevents tombstone-leak under cancel-storms.
+
+**User Story:** As an MCP client, when the user cancels a long-running tool call, the running module should observe the cancel signal at its next checkpoint and return early (with `EXECUTION_CANCELLED`) rather than completing wasted work and returning a stale result.
+
+**Acceptance Criteria:**
+1. `ExecutionRouter.cancel(call_id, reason)` exists in all three SDKs and returns `true` when the call_id was active (token cancelled), `false` for unknown ids (tombstone deposited).
+2. The CancelToken is threaded into the executor's `Context` so modules read `context.cancel_token.is_cancelled` (Python `cancel_token`, TS `cancelToken`, Rust via Arc<CancelToken>).
+3. Cancel-token map is bounded (≤4096); FIFO eviction with tombstones for cancel-before-start.
+4. RAII guard / `finally` releases the token on call completion across all three SDKs.
+
+**Priority:** P1
+
+---
+
+### F-045: Decorator Metadata Mapping
+
+**Description:** AnnotationMapper projects auxiliary `ModuleDescriptor` metadata (examples, tags, version, documentation_url) into the MCP `Tool` output beyond the standard behavioral annotations. Examples render as bulleted suffix in `Tool.description`; tags mirror as `keywords`; version emits at `_meta.version`; documentation_url at `_meta.documentationUrl`.
+
+**User Story:** As a tool author, I want my decorator metadata (examples, tags, version) to surface to MCP clients so users see helpful examples in tool listings without me having to maintain parallel MCP-specific metadata.
+
+**Acceptance Criteria:**
+1. Up to three examples are rendered as a bulleted `Examples:` section appended to `Tool.description`; additional examples are truncated.
+2. `descriptor.tags` mirrors as MCP `keywords` (list of strings); no case normalization.
+3. `descriptor.version` and `descriptor.documentation_url` emit on `_meta.version` and `_meta.documentationUrl` (camelCase per MCP `_meta` convention).
+4. All four fields are optional; absent values produce no output (no empty arrays / null fields).
+
+**Priority:** P2
+
+---
+
+### F-046: Custom Middleware Injection
+
+**Description:** The public `serve()` entry point accepts an optional `middleware` list passed through to the `ExecutionRouter` and apcore `Executor`. User middleware installs **after** built-in middleware (logging, tracing, redaction, approval enforcement) so user hooks observe already-redacted inputs without subverting safety-critical layers.
+
+**User Story:** As a backend engineer, I want to add custom telemetry / rate-limiting / business-logic middleware to apcore-mcp without forking the factory, while still trusting that built-in safety middleware (redaction, approval) runs first.
+
+**Acceptance Criteria:**
+1. `serve(... middleware=[...])` and `APCoreMCP(... middleware=[...])` accept a list of `apcore.middleware.Middleware` instances in all three SDKs.
+2. User middleware is appended **after** built-in middleware in the executor's middleware chain.
+3. Non-`Middleware` entries raise a configuration error before the server starts.
+4. When `middleware=None` or empty, behavior is unchanged from prior releases.
+
+**Priority:** P1
+
+---
+
 **Feature Count Summary:**
 
 | Priority | Count | Features |
 |----------|-------|----------|
 | P0       | 9     | F-001 through F-009 |
-| P1       | 13    | F-010 through F-016, F-032, F-036, F-038, F-042, F-043 |
-| P2       | 21    | F-017 through F-031, F-033 through F-035, F-037, F-039 through F-041 |
-| **Total**| **43**|                      |
+| P1       | 15    | F-010 through F-016, F-032, F-036, F-038, F-042, F-043, F-044, F-046 |
+| P2       | 22    | F-017 through F-031, F-033 through F-035, F-037, F-039 through F-041, F-045 |
+| **Total**| **46**|                      |
 
 ---
 

@@ -26,7 +26,7 @@ If you have already built modules using the `apcore` framework (which focuses on
 |----------|-----------|---------|--------|
 | **Python** | [apcore-mcp-python](https://github.com/aiperceivable/apcore-mcp-python) | `pip install apcore-mcp` |  ✅  |
 | **TypeScript** | [apcore-mcp-typescript](https://github.com/aiperceivable/apcore-mcp-typescript) | `npm install apcore-mcp` |  ✅  |
-| **Go** | apcore-mcp-go | — | Planned |
+| **Rust** | [apcore-mcp-rust](https://github.com/aiperceivable/apcore-mcp-rust) | `cargo add apcore-mcp` |  ✅  |
 
 ## Core Features
 

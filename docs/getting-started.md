@@ -82,7 +82,8 @@ Integrate **apcore-mcp** directly into your application. The `APCoreMCP` class i
     from apcore_mcp import APCoreMCP
 
     # One line setup — auto-discovers all modules
-    # Tool outputs are automatically formatted as Markdown (via apcore-toolkit)
+    # Tool outputs default to raw JSON. To format as Markdown, install
+    # `apcore-toolkit` and pass `output_formatter=to_markdown` (see below).
     mcp = APCoreMCP("./extensions")
 
     # Launch as MCP Server
@@ -95,8 +96,9 @@ Integrate **apcore-mcp** directly into your application. The `APCoreMCP` class i
     tools = mcp.to_openai_tools()
     # response = openai.chat.completions.create(tools=tools, ...)
 
-    # Opt out of Markdown formatting (return raw JSON)
-    mcp = APCoreMCP("./extensions", output_formatter=None)
+    # Opt into Markdown formatting (requires `pip install apcore-toolkit`)
+    from apcore_toolkit import to_markdown
+    mcp = APCoreMCP("./extensions", output_formatter=to_markdown)
     ```
 
     You can also pass an existing Registry or Executor:
@@ -131,7 +133,7 @@ Integrate **apcore-mcp** directly into your application. The `APCoreMCP` class i
     import { APCoreMCP } from "apcore-mcp";
 
     // One line setup — auto-discovers all modules
-    // Tool outputs are automatically formatted as Markdown
+    // Tool outputs default to raw JSON; pass an `outputFormatter` for custom formatting.
     const mcp = new APCoreMCP("./extensions");
 
     // Launch as MCP Server
@@ -173,15 +175,22 @@ Integrate **apcore-mcp** directly into your application. The `APCoreMCP` class i
 === "Rust"
 
     ```rust
-    use apcore_mcp::{APCoreMCP, ServeOptions};
+    use std::sync::Arc;
+    use apcore::{config::Config, executor::Executor, registry::registry::Registry};
+    use apcore_mcp::APCoreMCP;
 
-    // One line setup — auto-discovers all modules
+    // BackendSource::Executor is the functional backend in v0.14.0.
+    // Construct Registry → Executor first, then hand the Arc<Executor> to APCoreMCP.
+    let registry = Registry::new();
+    // ... register modules ...
+    let executor = Arc::new(Executor::new(registry, Config::default()));
+
     let mcp = APCoreMCP::builder()
-        .backend("./extensions")
+        .backend(executor)
         .build()?;
 
-    // Launch as MCP Server
-    mcp.serve(ServeOptions::default())?;
+    // Launch as MCP Server (synchronous — spawns its own Tokio runtime).
+    mcp.serve()?;
 
     // Or convert to OpenAI tool definitions
     let tools = mcp.to_openai_tools(false, true)?;
