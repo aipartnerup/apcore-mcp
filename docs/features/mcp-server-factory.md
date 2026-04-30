@@ -40,7 +40,7 @@ The MCP Server Factory is the primary builder that constructs an MCP protocol se
 - **Tool List** (MCP SDK) — A collection of `Tool` objects used for tool discovery.
 
 ### Dependencies
-- **MCP Python SDK** — Provides the `Server`, `Tool`, and `CallToolResult` types.
+- **MCP SDK (language-equivalent: mcp Python / @modelcontextprotocol/sdk / mcp-sdk Rust crate)** — Provides the `Server`, `Tool`, and `CallToolResult` types.
 - **Execution Router** — Used by the tool-call handler to dispatch module execution.
 
 ## Data Flow
@@ -96,7 +96,7 @@ When building MCP tools, the factory prefers `Registry.exportSchema(moduleId, st
 |---|---|---|
 | Python | available on `apcore.registry.Registry` | Factory prefers registry path; falls back to local converter on miss/exception. |
 | TypeScript | available on `apcore-js`'s `Registry` interface | Factory prefers registry path; falls back to local converter. |
-| Rust | NOT available — apcore Rust's `Registry::export_schema(name)` does not accept a `strict` parameter | Factory always uses local strict post-processing via the Schema Converter. Aligning the Rust apcore Registry API with Python/TS is tracked separately. |
+| Rust | NOT available — apcore Rust's `Registry::export_schema(name)` does not accept a `strict` parameter | Factory always uses local strict post-processing via the Schema Converter. Aligning the Rust apcore Registry API with Python/TS is deferred (A-D-012, see CHANGELOG 0.14.0 deferred section — pending next apcore Rust crate release). |
 
 The output of all three SDKs is functionally equivalent strict JSON Schema; the divergence is purely in *which layer performs the strict transformation*, not in the result.
 
@@ -160,3 +160,102 @@ This ordering guarantees that extensions can observe every tool call but cannot 
 
 - This component is the bridge that converts the "idea" of a module in apcore into the "reality" of a tool in the MCP protocol.
 - It is designed to be language-agnostic in its logic, enabling identical behavior across Python, TypeScript, and Rust implementations.
+
+---
+
+## Contract: MCPServerFactory.build
+
+### Inputs
+- registry: Registry, required (duck-typed) — must expose `list(tags?, prefix?)` and `get_definition(module_id)` methods
+- name: str, required, validates[non-empty, max 255 chars], reject_with=ValueError
+- version: str, optional, default="0.1.0"
+- tags: list[str] | None, optional — filter modules by tags
+- prefix: str | None, optional — filter modules by ID prefix
+- strict: bool, optional, default=True — when True, prefers registry.export_schema(strict=True); falls back to local SchemaConverter
+
+### Errors
+- ValueError — when a module_id starts with reserved `__apcore_` prefix (hard config error, not silently skipped)
+- Logs WARNING and skips the module — when build_tool raises for a non-reserved-prefix error (build continues for remaining modules)
+
+### Returns
+- On success: MCP Server instance — fully configured with list_tools and call_tool handlers; ready for transport binding
+- On empty registry: Server with empty tool list (warning logged)
+- Strict schema sourcing: tries `registry.export_schema(module_id, strict=True)` first; falls back to local SchemaConverter on miss/exception; Rust always uses local SchemaConverter (apcore Rust Registry lacks strict parameter)
+
+### Properties
+- async: false
+- thread_safe: false
+- pure: false
+- idempotent: false
+
+---
+
+## Contract: serve
+
+### Inputs
+- registry: Registry | Executor, required (duck-typed)
+- name: str, optional, default="apcore-mcp"
+- version: str, optional
+- transport: str, optional, default="stdio" — one of "stdio", "streamable-http", "sse"
+- middlewares: list[Middleware] | None, optional — installed after built-in middleware; non-Middleware values raise ValueError before server starts
+- extensions: ExtensionManager | None, optional
+- schema_converter: SchemaConverter | None, optional
+- annotation_mapper: AnnotationMapper | None, optional
+- error_mapper: ErrorMapper | None, optional
+
+### Errors
+- ValueError — when middlewares contains non-Middleware values (raised before server starts)
+- OSError — when transport bind fails (port already in use)
+
+### Returns
+- On success: None — blocks until server exits (stdio) or SIGINT/SIGTERM (HTTP)
+- On failure: raises (transport errors propagated)
+
+### Properties
+- async: false
+- thread_safe: false
+- pure: false
+- idempotent: false
+
+---
+
+## Contract: async_serve
+
+### Inputs
+- Same as `serve()` — yields an ASGI app for embedding in a larger application
+
+### Errors
+- Same as `serve()`
+
+### Returns
+- On success: async context manager yielding a Starlette ASGI app
+- On failure: raises
+
+### Properties
+- async: true
+- thread_safe: false
+- pure: false
+- idempotent: false
+
+---
+
+## Contract: MCPServerFactory.register_handlers
+
+### Inputs
+- server: Server, required — MCP low-level Server instance
+- tools: list[Tool], required — MCP Tool objects to expose via list_tools
+- router: Any, required (duck-typed) — must expose `async handle_call(name, arguments, extra?) -> tuple`
+- async_bridge: AsyncTaskBridge | None, optional — when provided, four `__apcore_task_*` meta-tools are appended to tools list and async-hinted modules are routed through the bridge
+- descriptor_lookup: callable | None, optional — used to detect async-hinted modules; required when async_bridge is set for async routing to work
+
+### Errors
+- No errors raised during registration (errors surface at call time)
+
+### Returns
+- On success: None — side effect: registers list_tools and call_tool handlers on the server; identity is propagated from ContextVar/AsyncLocalStorage into the tool execution context
+
+### Properties
+- async: false
+- thread_safe: false
+- pure: false
+- idempotent: false

@@ -4,6 +4,8 @@
 > Source: extracted from apcore-mcp/docs/tech-design-apcore-mcp.md (F-042)
 > Created: 2026-04-15
 
+> **Status (v0.14.0):** EB-1 — `ExtensionManager.apply()` is unimplemented in all SDKs. Resolution precedence and adapter-hook kwargs (EB-2) are functional in Python+TypeScript via `serve()`/`async_serve()` kwargs (`schema_converter`, `annotation_mapper`, `error_mapper`). Rust adapter-hook injection deferred to 0.16 — Rust adapters are stateless unit structs and require trait-based redesign.
+
 ## Purpose
 
 The Extension Bridge is the integration seam between apcore's `ExtensionManager` and the MCP server pipeline. It owns the wiring that turns caller-supplied extensions — ACLs, approval handlers, module validators, discoverers, span exporters, middleware, and MCP-specific adapter hooks — into a fully configured `Executor` and `MCPServerFactory`. It centralizes resolution precedence, load order, and type-safety guarantees so that individual features (Server Factory, Execution Router, Transport Manager) never need to know about `ExtensionManager` directly.
@@ -103,3 +105,55 @@ When `extensions=None`, the bridge is a no-op for the `apply()` step: the factor
 - This component is the single point of truth for "how extensions reach the MCP server." Server Factory, Execution Router, and Transport Manager all treat the resulting Executor/adapters as opaque, pre-configured inputs.
 - The bridge is intentionally thin — it orchestrates existing apcore primitives rather than introducing parallel plugin machinery.
 - Language parity: Python, TypeScript, and Rust SDKs implement identical precedence and load-order rules; only the type-check mechanism differs (isinstance / duck-type guard / trait bound).
+
+---
+
+## Contract: ExtensionBridge.apply
+
+### Inputs
+- extensions: ExtensionManager | None, required — when None, apply() is a no-op; factory builds default Executor and resolves adapters from kwargs/defaults only
+- registry: Registry, required — target for discoverer/validator extension wiring
+- executor: Executor, required — target for ACL, approval handler, middleware, span exporter wiring
+
+### Errors
+- TypeError — when an adapter hook fails isinstance/duck-type guard (raised before any server socket is opened)
+- TypeError — propagated from ExtensionManager.register() for invalid extension types
+- Raises (never silently drops) — when any registered extension cannot be wired to Executor or Registry
+- WARNING logged (not error) — when both a serve() kwarg and an ExtensionManager registration supply the same adapter hook; kwarg wins
+- WARNING logged — when the same ExtensionManager appears to have been applied to a caller-supplied Executor and is re-applied (detected via internal `_applied` sentinel)
+
+### Returns
+- On success: None — side effects: Executor and Registry are mutated with all user-supplied extensions in load order:
+  1. ExtensionManager.apply(registry, executor) — wires user-supplied discoverers, validators, ACLs, approval handlers, span exporters, user middleware
+  2. Built-in MCP middleware installation (tracing, redaction, preflight) — applied after user extensions
+  3. MCP-specific adapter hooks resolved: explicit kwarg > ExtensionManager registration > built-in default
+  4. Protocol handlers registered on MCP Server
+
+### Properties
+- async: false
+- thread_safe: false
+- pure: false
+- idempotent: false
+
+---
+
+## Contract: ExtensionBridge.resolve
+
+### Inputs
+- extension_type: str, required — one of `"mcp_schema_converter"`, `"mcp_annotation_mapper"`, `"mcp_error_mapper"` (MCP-reserved extension point names)
+- serve_kwarg: Any | None, required — explicit kwarg value from serve() call (highest precedence)
+- extensions: ExtensionManager | None, required — source for registered adapter hooks (second precedence)
+- default_factory: callable, required — zero-arg callable that constructs the built-in default (lowest precedence)
+
+### Errors
+- TypeError — when resolved instance fails duck-type guard (raised before server starts)
+
+### Returns
+- On success: resolved adapter instance — first non-None from: serve_kwarg → ExtensionManager.get(extension_type) → default_factory()
+- Resolution Precedence (spec line 66): 1) explicit serve() kwarg, 2) ExtensionManager registration, 3) built-in default constructed by factory
+
+### Properties
+- async: false
+- thread_safe: false
+- pure: true
+- idempotent: true

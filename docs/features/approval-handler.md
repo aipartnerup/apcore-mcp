@@ -38,8 +38,8 @@ The Approval Handler implements apcore's "Human-in-the-Loop" safety mechanism by
 - **Elicitation Message** (MCP Client) — A structured request displayed to the user.
 
 ### Dependencies
-- **apcore-python SDK** — Provides the `ApprovalHandler` protocol and related types.
-- **MCP Python SDK** — Provides the elicitation protocol handlers.
+- **apcore SDK (language-equivalent: apcore-python / apcore-js / apcore Rust crate)** — Provides the `ApprovalHandler` protocol and related types.
+- **MCP SDK (language-equivalent: mcp Python / @modelcontextprotocol/sdk / mcp-sdk Rust crate)** — Provides the elicitation protocol handlers.
 
 ## Data Flow
 
@@ -85,3 +85,29 @@ The system supports global approval modes via the `--approval` CLI flag:
 
 - This feature is a primary defense against unintended side effects in autonomous agent workflows.
 - It leverages the standard `sampling` or `elicitation` features of the MCP protocol to provide a native-feeling UI for the user.
+
+---
+
+## Contract: ElicitationApprovalHandler.request_approval
+
+### Inputs
+- request: ApprovalRequest, required, validates[has `context`, `module_id`, `description`, `arguments` fields], reject_with=ApprovalResult(status="rejected")
+- request.context.data[MCP_ELICIT_KEY]: async callable, required per-call — extracted from context at call time (not constructor), reject_with=ApprovalResult(status="rejected", reason="No elicitation callback available")
+
+### Errors
+- Returns `ApprovalResult(status="rejected", reason="No context available for elicitation")` — when request.context is None or has no `data`
+- Returns `ApprovalResult(status="rejected", reason="No elicitation callback available")` — when MCP_ELICIT_KEY not in context.data
+- Returns `ApprovalResult(status="rejected", reason="Elicitation request failed")` — when elicit callback raises any exception
+- Returns `ApprovalResult(status="rejected", reason="Elicitation returned no response")` — when elicit callback returns None
+- Never raises; all failure modes return a rejected ApprovalResult
+
+### Returns
+- On success (action == "accept"): `ApprovalResult(status="approved")`
+- On any other action (decline/cancel/any non-accept string): `ApprovalResult(status="rejected", reason="User action: {action}")`
+- Arguments are formatted as JSON string in the elicitation message
+
+### Properties
+- async: true
+- thread_safe: true
+- pure: false
+- idempotent: false

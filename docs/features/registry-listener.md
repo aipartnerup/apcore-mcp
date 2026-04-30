@@ -38,8 +38,8 @@ The Registry Listener enables "hot reloading" of MCP tools by monitoring an apco
 - **Updated Tool Collection** (MCPServerFactory) — The modified set of tools used for discovery requests.
 
 ### Dependencies
-- **apcore-python SDK** — Provides the Registry and its event system.
-- **MCP Python SDK** — Provides the server-side notification API.
+- **apcore SDK (language-equivalent: apcore-python / apcore-js / apcore Rust crate)** — Provides the Registry and its event system.
+- **MCP SDK (language-equivalent: mcp Python / @modelcontextprotocol/sdk / mcp-sdk Rust crate)** — Provides the server-side notification API.
 
 ## Data Flow
 
@@ -92,7 +92,7 @@ The Client Notification Bridge translates apcore Registry `register`/`unregister
 
 ## Constraints
 
-- **Registry Compatibility**: Requires an apcore Registry that supports event listeners (standard in apcore-python >= 0.15.0).
+- **Registry Compatibility**: Requires an apcore Registry that supports event listeners (standard in apcore >= 0.19.0 (language-equivalent)).
 - **Client Support**: Not all MCP clients may implement the `list_changed` notification; the listener remains functional even if clients ignore the message.
 - **Async Safety**: Callbacks from the Registry (which may be synchronous) must be safely bridged to the server's asynchronous event loop.
 
@@ -105,3 +105,87 @@ The Client Notification Bridge translates apcore Registry `register`/`unregister
 
 - This feature is critical for developer productivity, allowing for live-coding of modules that are immediately usable in the agent UI.
 - It enables advanced use cases like server-side "plugin stores" or dynamic capability discovery.
+
+---
+
+## Contract: RegistryListener.start
+
+### Inputs
+- No parameters
+
+### Errors
+- No exceptions raised; safe to call multiple times (idempotent — returns immediately if already active)
+
+### Returns
+- On success: None — side effect: registers `_on_register` callback on registry "register" event and `_on_unregister` on "unregister" event; sets `_active = True`
+- Idempotent: if already started, returns without re-registering
+
+### Properties
+- async: false
+- thread_safe: false
+- pure: false
+- idempotent: true
+
+---
+
+## Contract: RegistryListener.stop
+
+### Inputs
+- No parameters
+
+### Errors
+- No exceptions raised
+
+### Returns
+- On success: None — side effect: sets `_active = False`; callbacks from the registry become no-ops (apcore Registry does not support callback removal)
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: false
+- idempotent: true
+
+---
+
+## Contract: RegistryListener._on_register
+
+### Inputs
+- module_id: str, required
+- module: Any, optional — ignored; descriptor is fetched from registry
+
+### Errors
+- No exceptions raised; all failures are logged and swallowed
+
+### Returns
+- On success: None — side effects: fetches descriptor, builds MCP Tool, adds to `_tools[module_id]` under lock, logs info
+- Short-circuits immediately when `_active == False` — this guard MUST be checked first before any other work
+- When `registry.get_definition()` returns None (race condition): logs warning, returns without updating tool list
+- When `build_tool()` raises: logs warning, does NOT update tool list or notify clients
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: false
+- idempotent: false
+
+---
+
+## Contract: RegistryListener._on_unregister
+
+### Inputs
+- module_id: str, required
+- module: Any, optional — ignored
+
+### Errors
+- No exceptions raised; missing module_id is silently ignored
+
+### Returns
+- On success: None — side effects: removes `module_id` from `_tools` under lock, logs info when module was present
+- Short-circuits immediately when `_active == False` — this guard MUST be checked first before any other work
+- When module_id not in `_tools`: silently ignores (no error, no log)
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: false
+- idempotent: true

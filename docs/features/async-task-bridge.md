@@ -103,3 +103,90 @@ The bridge only projects apcore's lifecycle; it does not add new states. Termina
 - The bridge is a thin routing layer; all concurrency, cancellation, and cleanup semantics are delegated to apcore's `AsyncTaskManager`.
 - Meta-tool names align with MCP's convention of reserved double-underscore identifiers to avoid polluting the public tool namespace.
 - Output of `__apcore_task_status` passes through the same redactor used by the Execution Router so sensitive fields in task results are masked consistently.
+
+---
+
+## Contract: AsyncTaskBridge.submit
+
+### Inputs
+- module_id: str, required, validates[non-empty string, not starting with `__apcore_`], reject_with=ValueError
+- arguments: dict[str, Any], required, validates[dict type], reject_with=ValueError
+- context: Context | None, optional — identity and trace_parent extracted when present
+- progress_token: Any | None, optional — when provided alongside send_notification, installs a progress sink in `context.data[MCP_PROGRESS_KEY]` before calling AsyncTaskManager.submit
+- send_notification: async callable | None, optional — paired with progress_token for fan-out
+- session_key: str | None, optional — when provided, task_id is recorded in _session_tasks for mass-cancel on disconnect
+
+### Errors
+- TaskLimitExceededError(code=TASK_LIMIT_EXCEEDED) — when AsyncTaskManager max_tasks cap is reached (retryable: true)
+- ValueError — when module_id is empty or uses reserved `__apcore_` prefix
+
+### Returns
+- On success: dict `{"task_id": str, "status": "pending"}` — immediate envelope; task runs in background
+- On failure: raises (callers should map through ErrorMapper)
+
+### Properties
+- async: true
+- thread_safe: true
+- pure: false
+- idempotent: false
+
+---
+
+## Contract: AsyncTaskBridge.is_async_module
+
+### Inputs
+- descriptor: Any, required (duck-typed) — inspects `descriptor.metadata["async"]` and `descriptor.annotations.extra["mcp_async"]`
+
+### Errors
+- No exceptions raised; None input returns False
+
+### Returns
+- On success: bool — True when `metadata.async == True` (bool) OR `annotations.extra["mcp_async"] == "true"` (string, case-insensitive); False otherwise
+- On failure: returns False (never raises)
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: true
+- idempotent: true
+
+---
+
+## Contract: AsyncTaskBridge.handle_status
+
+### Inputs
+- task_id: str, required, validates[non-empty string], reject_with=error tuple
+
+### Errors
+- Returns `(content, is_error=True, None)` with `{"error": "ASYNC_TASK_NOT_FOUND", "task_id": ...}` — when task_id unknown or evicted after cleanup
+- Returns error tuple — when task_id is empty or missing
+
+### Returns
+- On success: tuple `(list[dict], bool, str|None)` — content contains JSON-serialised TaskInfo projection; includes `result` field when status is `completed`; includes `error` field when status is `failed`; result is passed through redactor when available
+- On failure: returns error tuple (never raises)
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: false
+- idempotent: true
+
+---
+
+## Contract: AsyncTaskBridge.cancel
+
+### Inputs
+- task_id: str, required, validates[non-empty string], reject_with=error tuple
+
+### Errors
+- Returns `(content, is_error=True, None)` with `{"error": "ASYNC_TASK_NOT_FOUND"}` — when task_id unknown
+
+### Returns
+- On success: tuple `(list[dict], bool, str|None)` — content contains `{"task_id": str, "cancelled": bool}`; `cancelled` is True when AsyncTaskManager successfully cancelled the task
+- On failure: returns error tuple (never raises)
+
+### Properties
+- async: true
+- thread_safe: true
+- pure: false
+- idempotent: false

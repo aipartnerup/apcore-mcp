@@ -38,7 +38,7 @@ The Schema Converter is responsible for transforming apcore JSON Schema definiti
 - **JSON Schema Dict** (MCP/OpenAI Converters) — A self-contained, inlined schema dictionary.
 
 ### Dependencies
-- **apcore-python SDK** — Provides the `ModuleDescriptor` structure and raw schema data.
+- **apcore SDK (language-equivalent: apcore-python / apcore-js / apcore Rust crate)** — Provides the `ModuleDescriptor` structure and raw schema data.
 
 ## Data Flow
 
@@ -103,3 +103,50 @@ User-set `additionalProperties` values (whether `true`, `false`, or a subschema)
 
 - This component is critical for compatibility with MCP clients (like Claude Desktop) and OpenAI's API, which often struggle with unresolved JSON Schema references.
 - It reuses patterns from apcore's internal `RefResolver` but is optimized for the specific constraints of tool-use protocols.
+
+---
+
+## Contract: SchemaConverter.convert_input_schema
+
+### Inputs
+- descriptor: Any, required (duck-typed) — must have `input_schema` attribute containing a dict; NOT a raw schema dict or JSON Value
+
+### Errors
+- ValueError — when a circular `$ref` is detected (e.g., "Circular $ref detected: #/$defs/A")
+- ValueError — when the 32-level recursion depth limit is exceeded
+- KeyError — when a `$ref` points to a missing key in `$defs`
+
+### Returns
+- On success: dict[str, Any] — self-contained, inlined JSON Schema; all `$ref` nodes replaced; `$defs` removed from output; root always has `type: "object"`
+- Empty schema `{}` → `{"type": "object", "properties": {}, "additionalProperties": false}` (when strict=True)
+- Schema with properties but no type → `type: "object"` added
+- Deep copy of source — never mutates the original descriptor
+- When `strict=True` (default): `additionalProperties: false` injected on every object-typed node that lacks it; existing user-set values preserved
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: true
+- idempotent: true
+
+---
+
+## Contract: SchemaConverter._inject_strict
+
+### Inputs
+- node: Any, required — JSON Schema node (dict, list, or primitive); non-dict values are no-ops
+
+### Errors
+- No exceptions raised
+
+### Returns
+- On success: None — in-place mutation: sets `additionalProperties: false` on every object-typed subschema that doesn't already define the key
+- Canonical subschema-keyword recursion set (all three SDKs MUST walk all of these): `items`, `additionalProperties`, `not`, `if`, `then`, `else`, `contains`, `propertyNames`, `oneOf`, `anyOf`, `allOf`, `prefixItems`, `properties`, `patternProperties`, `$defs`, `definitions`
+- User-set `additionalProperties` values (true, false, or subschema dict) are always preserved — injection only when key is absent
+- Object detection: `type == "object"` OR `type` array contains `"object"` OR has `properties` without conflicting non-object scalar type
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: false
+- idempotent: true

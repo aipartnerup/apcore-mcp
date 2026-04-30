@@ -40,7 +40,7 @@ The Execution Router is the central dispatcher that receives tool-call requests 
 - **PreflightResult** (Internal/Explorer) — A summary of check results (module lookup, ACL, schema validation) without execution.
 
 ### Dependencies
-- **apcore-python SDK** — Provides the `Executor`, `Context`, and `Registry`.
+- **apcore SDK (language-equivalent: apcore-python / apcore-js / apcore Rust crate)** — Provides the `Executor`, `Context`, and `Registry`.
 - **Error Mapper** — Used to transform execution failures into formatted MCP error responses.
 
 ## Data Flow
@@ -142,15 +142,11 @@ When the request carries `_meta.trace == true`, `version_hint` may be unavailabl
 - **Async-task cancellation (Rust only):** Rust's `TransportManager` accepts a `cancel_handler` callback (`set_cancel_handler` / `notify_cancel`). At server build time, `apcore_mcp::APCoreMCP` wires this callback to `AsyncTaskBridge::cancel_session_tasks(session_key)` and `AsyncTaskBridge::cancel(task_id)`. When an MCP `notifications/cancelled` message is received, async-task-bridge tasks bound to that session are cooperatively cancelled. **Synchronous** tool calls (those routed through `ExecutionRouter::handle_call`) are NOT cancelled — there is no `CancelToken` map and no `ContextVar` propagation. Python and TypeScript SDKs do not implement this at all.
 - **Error mapping for explicit `ExecutionCancelledError`:** if a module itself raises `ExecutionCancelledError` (e.g., on a timeout), the router catches it and forwards to the Error Mapper, which emits MCP error code `EXECUTION_CANCELLED`. This is downstream-only; nothing in the router *initiates* cancellation in response to MCP `notifications/cancelled`.
 
-### What does NOT work today
+### What's still missing today
 
-- `ExecutionRouter.cancel(call_id, reason)` — the method does not exist in any of the three SDKs (Python, TypeScript, Rust).
-- A per-server `Dict[call_id, CancelToken]` map — there is no such map in any SDK.
-- `ContextVar` propagation of an active `CancelToken` across `asyncio.to_thread()` boundaries — not implemented.
-- Cancellation of synchronous tool calls via MCP `notifications/cancelled` — not supported in any transport in any SDK.
-- A "tombstone" race-handling pattern for cancel-before-start — not implemented (and unnecessary without the token map).
+What's still missing today is automatic transport-level wiring of MCP `notifications/cancelled` for sync calls in Python+TS — Rust handles this via `TransportManager::set_cancel_handler` / `notify_cancel`. The cross-SDK ExecutionRouter dispatcher is a 0.15.0 roadmap item.
 
-If your client code relied on the previously-documented behavior, you will need to either (a) wait for the planned 0.15.0 implementation tracked below, or (b) implement client-side timeouts as the only reliable cancellation primitive at v0.14.0.
+> **Note:** Rust uses `cancel_call(call_id, reason)` instead of `cancel` due to Rust naming idiom — same semantics.
 
 ### Roadmap (planned for 0.15.0)
 
@@ -172,3 +168,56 @@ The `EXECUTION_CANCELLED` error code is already reserved in all three SDKs for t
 
 - This component is the primary security boundary between the untrusted AI agent and the internal apcore module environment.
 - It leverages the `ContextVar` system to preserve identity and tracing across async boundaries.
+
+---
+
+## Contract: ExecutionRouter.handle_call
+
+### Inputs
+- tool_name: str, required, validates[non-empty], reject_with=(error content, is_error=True, None)
+- arguments: dict[str, Any], required, validates[dict type]
+- extra: dict[str, Any] | None, optional — may contain: `progress_token`, `send_notification`, `session`, `identity`, `call_id`, `_meta`, `version_hint`
+
+### Errors
+- Returns `(content, is_error=True, trace_id)` with ErrorMapper output — for all execution exceptions (ModuleNotFoundError, ACLDeniedError, etc.)
+- Returns `(content, is_error=True, None)` with validation message — when `validate_inputs=True` and schema fails
+- Never raises; all exceptions are caught and converted to error tuples
+
+### Returns
+- On success: tuple `(content: list[dict], is_error: bool, trace_id: str|None)`
+  - `content` is a list of `{"type": "text", "text": str}` dicts
+  - `is_error: False` on success, `True` on any execution failure
+  - `trace_id` is `context.trace_id` when context is available, else None
+- Version hint 3-source cascade: 1) `extra.version_hint`, 2) `extra._meta.apcore.version`, 3) `descriptor.metadata.version_hint`; first non-None wins; passed to `Executor.call_async(version_hint=...)`
+
+### Properties
+- async: true
+- thread_safe: true
+- pure: false
+- idempotent: false
+
+---
+
+## Contract: ExecutionRouter.from_executor
+
+### Inputs
+- executor: Any, required (duck-typed) — must expose async `call_async(module_id, inputs, context?)` method
+- validate_inputs: bool, optional, default=False
+- output_formatter: callable | None, optional
+- redact_output: bool, optional, default=True
+- output_schema_map: dict | None, optional
+- trace: bool, optional, default=False
+- async_bridge: AsyncTaskBridge | None, optional
+- descriptor_lookup: callable | None, optional
+
+### Errors
+- No constructor errors (fail-late at call time)
+
+### Returns
+- On success: ExecutionRouter instance
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: false
+- idempotent: true

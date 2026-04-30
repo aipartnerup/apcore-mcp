@@ -64,6 +64,11 @@ When `strict=True`, the converter performs recursive transformation:
 - Convert any property that wasn't originally required into a union type `[type, "null"]`.
 - Strip all `default` values and non-standard `x-*` keys.
 
+### Per-SDK Defaults (v0.14.0)
+- Python: `OpenAIConverter()` — strict default `false`; pass `strict=true` per call.
+- TypeScript: `convertRegistry(registry, { strict: true })` — strict default `true` (changed in 0.14.0 per OC-1).
+- Rust: explicit `strict: bool` argument required on `convert_registry`/`convert_descriptor`; no implicit default.
+
 ### Module ID Normalization
 Since OpenAI function names can only contain `[a-zA-Z0-9_-]`, dots are replaced with hyphens. The converter must ensure this mapping is bijective and reversible to allow the calling application to map the tool call back to the original `module_id`.
 
@@ -85,3 +90,79 @@ The converter must return only standard Python types (dict, list, str, etc.) and
 
 - This component is a pure-function utility that can be used independently of the MCP server.
 - It enables legacy OpenAI-based agents to leverage the same tool library as modern MCP-based agents.
+
+---
+
+## Contract: OpenAIConverter.convert_registry
+
+### Inputs
+- registry: Any, required (duck-typed) — must expose `list(tags?, prefix?)` and `get_definition(module_id)` methods; NOT a raw JSON Value
+- embed_annotations: bool, optional, default=False — when True, appends annotation suffix to descriptions
+- strict: bool, optional, default=False (Python; TypeScript default is True per OC-1)
+- tags: list[str] | None, optional — filter passed to registry.list()
+- prefix: str | None, optional — filter passed to registry.list()
+
+### Errors
+- ValueError — when normalization produces name collisions (e.g., `a.b` and `a-b` both → `a-b`); raises with collision details
+- Silently skips modules where `registry.get_definition()` returns None (race condition guard)
+
+### Returns
+- On success: list[dict[str, Any]] — each dict follows OpenAI function-calling format: `{"type": "function", "function": {"name": str, "description": str, "parameters": dict, "strict": bool?}}`
+- `strict: true` key only present in function dict when `strict=True`
+- On failure: raises ValueError for collisions; other errors propagated from registry
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: false
+- idempotent: true
+
+---
+
+## Contract: OpenAIConverter._apply_strict_mode
+
+### Inputs
+- schema: dict[str, Any], required — JSON Schema dict; deep-copied before transformation
+
+### Errors
+- No exceptions raised for valid schema dicts; unexpected types may propagate
+
+### Returns
+- On success: dict[str, Any] — new schema with strict transformations applied in pipeline order:
+  1. Promote `x-llm-description` → `description` (before stripping)
+  2. Strip all `x-*` extension keys
+  3. Strip all `default` values
+  4. Set `additionalProperties: false` on all objects
+  5. Move all property names to `required` array (sorted alphabetically)
+  6. Optional properties (not originally required) become nullable: wrapped in `{oneOf: [original, {type: "null"}]}`; optional `$ref` properties wrapped as `{oneOf: [original, {type: "null"}]}`
+  7. Recurse into nested objects, array items, oneOf/anyOf/allOf, $defs
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: true
+- idempotent: true
+
+---
+
+## Contract: to_openai_tools
+
+### Inputs
+- registry: Any, required (duck-typed) — same contract as OpenAIConverter.convert_registry
+- strict: bool, optional, default=False
+- embed_annotations: bool, optional, default=False
+- tags: list[str] | None, optional
+- prefix: str | None, optional
+
+### Errors
+- ValueError — for name collisions (same as convert_registry)
+
+### Returns
+- On success: list[dict[str, Any]] — delegates to OpenAIConverter().convert_registry()
+- On failure: raises
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: false
+- idempotent: true

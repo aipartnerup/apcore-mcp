@@ -28,7 +28,7 @@ The JWT Authenticator provides a pluggable security layer for HTTP-based MCP tra
 1. **Token Validator** — Decodes and verifies the signature, expiration (`exp`), audience (`aud`), and issuer (`iss`) of incoming JWTs.
 2. **Identity Mapper** — Translates JWT claims into the structured `Identity` object (id, type, roles, attributes) used by apcore's ACL system.
 3. **Request Guard** — Intercepts all incoming HTTP/SSE requests and returns `401 Unauthorized` if a valid token is missing (when required).
-4. **Context Bridge** — Uses `ContextVar` to securely pass the authenticated identity from the HTTP middleware to the tool execution handler.
+4. **Context Bridge** — Uses context-local storage to securely pass the authenticated identity from the HTTP middleware to the tool execution handler — Python: `ContextVar`; TypeScript: `AsyncLocalStorage`; Rust: `tokio::task_local!`. Note that `authenticate()` is async in all three SDKs (post-JWT-1, CHANGELOG 0.14.0).
 
 ## Interfaces
 
@@ -41,8 +41,9 @@ The JWT Authenticator provides a pluggable security layer for HTTP-based MCP tra
 - **401 Unauthorized** (HTTP Client) — Error response when authentication fails.
 
 ### Dependencies
-- **PyJWT / jose** — Low-level library for JWT decoding and validation.
-- **apcore-python SDK** — Provides the `Identity` and `Context` classes.
+- **Python:** PyJWT (or jose) — JWT decoding and validation; apcore SDK (Python) — provides `Identity` and `Context`.
+- **TypeScript:** jsonwebtoken — JWT decoding and validation; apcore SDK (apcore-js) — provides `Identity` and `Context`.
+- **Rust:** jsonwebtoken crate — JWT decoding and validation; apcore SDK (apcore Rust crate) — provides `Identity` and `Context`.
 
 ## Data Flow
 
@@ -89,3 +90,51 @@ Authentication is automatically bypassed when using the `stdio` transport, as th
 
 - This feature is essential for "Tool-as-a-Service" deployments where the MCP server is hosted on a remote server.
 - It ensures that apcore's powerful ACL system is effective even when tools are called over the public internet.
+
+---
+
+## Contract: JWTAuthenticator.__init__
+
+### Inputs
+- key: str, required — secret key (HS256) or public key (RS256); stored for use at authenticate() time; NOT validated at construction
+- algorithms: list[str] | None, optional, default=["HS256"] — explicit algorithm whitelist to prevent algorithm-switching attacks
+- audience: str | None, optional — expected `aud` claim; when None, aud is not validated
+- issuer: str | None, optional — expected `iss` claim; when None, iss is not validated
+- claim_mapping: ClaimMapping | None, optional, default=ClaimMapping(id_claim="sub", type_claim="type", roles_claim="roles")
+- require_claims: list[str] | None, optional, default=["sub"] — claims enforced for ALL names (standard AND custom, e.g. "org_id")
+
+### Errors
+- No validation at construction time — key validity is checked lazily at authenticate() call
+
+### Returns
+- On success: JWTAuthenticator instance
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: false
+- idempotent: true
+
+---
+
+## Contract: JWTAuthenticator.authenticate
+
+### Inputs
+- headers: dict[str, str], required — flat HTTP headers map (NOT the full request); Authorization header extracted as `headers.get("authorization", "")`; Bearer prefix is case-insensitive
+
+### Errors
+- Returns None — when Authorization header is missing, not prefixed with "Bearer ", or token is empty
+- Returns None — when JWT signature is invalid, token is expired, or any required claim is missing
+- Returns None — when id_claim value in payload is None (identity_id=None → returns None, not id="null")
+- Never raises (all pyjwt.InvalidTokenError subtypes are caught and logged at DEBUG)
+
+### Returns
+- On success: Identity(id=str, type=str, roles=tuple[str, ...], attrs=dict) — id=str(identity_id); type defaults to "user" when type_claim is absent or None in JWT payload; roles=tuple of str coerced from list; attrs populated from attrs_claims when configured
+- On failure: None
+- `require_auth` policy (whether None triggers 401) is owned by AuthMiddleware, NOT by this class
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: false
+- idempotent: true

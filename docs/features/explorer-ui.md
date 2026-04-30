@@ -86,3 +86,51 @@ The explorer respects the server's global configuration. If authentication is re
 
 - This feature is inspired by tools like Swagger/OpenAPI UI but specialized for the apcore-mcp environment.
 - It is enabled by default in development mode but should be disabled (or authenticated) in production environments.
+
+---
+
+## Contract: create_explorer_mount
+
+### Inputs
+- tools: list[Tool], required — list of MCP Tool objects to expose in the explorer
+- router: Any, required (duck-typed) — must expose `async handle_call(name, args) -> tuple`
+- allow_execute: bool, optional, default=False — when False, tool execution is disabled in the UI
+- explorer_prefix: str, optional, default="/explorer" — URL prefix; must be relative-safe for reverse proxy hosting
+- authenticator: Authenticator | None, optional — when provided, builds an auth hook for per-request identity in tool execution
+- title: str, optional, default="MCP Tool Explorer"
+- project_name: str | None, optional
+- project_url: str | None, optional
+
+### Errors
+- ValueError — when auth hook raises during authentication (mapped to HTTP 401 by mcp-embedded-ui)
+- No constructor errors
+
+### Returns
+- On success: Starlette `Mount` object — can be included in any Starlette route list; serves embedded HTML UI at `{explorer_prefix}`; delegates to `mcp-embedded-ui` for all HTML rendering
+- On failure: raises ValueError or TypeError for invalid arguments
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: true
+- idempotent: true
+
+---
+
+## Contract: buildExplorerAuthHook
+
+### Inputs
+- authenticator: Authenticator, required (duck-typed) — must expose `authenticate(headers: dict) -> Identity | None`
+
+### Errors
+- Raises ValueError("Missing or invalid Bearer token") — when authenticator returns None; mcp-embedded-ui catches this and returns 401
+
+### Returns
+- On success: sync context manager callable `(request: Request) -> ContextManager` — sets `auth_identity_var` ContextVar for the duration of the tool call, resets on exit
+- On failure: raises ValueError (caught by the embedding framework)
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: true
+- idempotent: true

@@ -36,8 +36,8 @@ The Annotation Mapper bridges apcore's behavioral annotations (e.g., `destructiv
 - **Annotation Suffix String** (OpenAI Converter) — A formatted string added to the tool description.
 
 ### Dependencies
-- **apcore-python SDK** — Provides the `ModuleAnnotations` dataclass.
-- **MCP Python SDK** — Provides the `ToolAnnotations` type definition.
+- **apcore SDK (language-equivalent: apcore-python / apcore-js / apcore Rust crate)** — Provides the `ModuleAnnotations` dataclass.
+- **MCP SDK (language-equivalent: mcp Python / @modelcontextprotocol/sdk / mcp-sdk Rust crate)** — Provides the `ToolAnnotations` type definition.
 
 ## Data Flow
 
@@ -83,3 +83,63 @@ All four fields are optional: when absent or `None` on the descriptor, the mappe
 ## Notes
 
 - This component is vital for safe AI-agent interactions with real-world tools. Without these hints, an agent might inadvertently perform destructive operations without human oversight.
+
+---
+
+## Contract: AnnotationMapper.to_description_suffix
+
+### Inputs
+- annotations: ModuleAnnotations | None, optional, validates[duck-typed attributes], reject_with=None (returns empty string on None)
+
+### Errors
+- No exceptions raised; all attribute access uses `getattr` with defaults
+
+### Returns
+- On success: str — formatted annotation suffix starting with `\n\n` when non-empty; empty string `""` when annotations is None or all values are defaults
+- On failure: returns `""` (never raises)
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: true
+- idempotent: true
+
+---
+
+## Contract: AnnotationMapper.map_to_mcp
+
+### Inputs
+- annotations: ModuleAnnotations | None, optional, validates[duck-typed attributes], reject_with=None (returns protocol defaults on None)
+
+### Errors
+- No exceptions raised; None input maps to safe defaults
+
+### Returns
+- On success: dict[str, Any] with camelCase keys — `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`, `title`; defaults are `false/false/false/true/null` when annotations is None
+- On failure: returns default dict (never raises)
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: true
+- idempotent: true
+
+---
+
+## Contract: AnnotationMapper.requires_approval
+
+### Inputs
+- annotations: ModuleAnnotations | None, optional, validates[has `requires_approval` attribute], reject_with=None (returns False on None)
+
+### Errors
+- No exceptions raised; None input returns False
+
+### Returns
+- On success: bool — True when `annotations.requires_approval` is truthy, False otherwise (including when annotations is None)
+- On failure: returns False (never raises)
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: true
+- idempotent: true

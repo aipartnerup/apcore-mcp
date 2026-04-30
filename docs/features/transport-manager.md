@@ -74,7 +74,10 @@ The manager installs signal handlers that trigger an internal shutdown event. Th
 
 - **Port Conflict**: Must handle and report "Address already in use" errors gracefully.
 - **stdio Restrictions**: While using stdio, the manager must prevent any other library (like `logging` or print statements) from writing to `stdout`, as this would corrupt the MCP protocol stream.
-- **Python Version**: Network transports require an async-capable Python environment (Python 3.11+).
+- **Language Runtime Version**: Network transports require an async-capable runtime in each language:
+  - Python: ≥ 3.11
+  - TypeScript: Node ≥ 18
+  - Rust: ≥ 1.75 with Tokio runtime
 
 ## Error Handling
 
@@ -85,4 +88,74 @@ The manager installs signal handlers that trigger an internal shutdown event. Th
 
 - `streamable-http` is the modern, recommended network transport, replacing the legacy `sse` transport.
 - For embedded use (e.g., within a larger FastAPI app), the manager yields an ASGI app rather than running its own Uvicorn instance.
-- **Cancellation Forwarding (Rust only at v0.14.0):** Rust's `TransportManager` exposes `set_cancel_handler(handler)` / `notify_cancel(session_id)` so that MCP `notifications/cancelled` messages can be routed to a caller-supplied callback (today wired to `AsyncTaskBridge::cancel_session_tasks` by the top-level facade). Python and TypeScript do not yet implement this; the planned cross-SDK `ExecutionRouter.cancel(call_id, reason)` dispatcher is tracked as a 0.15.0 roadmap item — see the Execution Router "Cancellation Handling" section.
+- **Cancellation Forwarding:** Rust: `set_cancel_handler` / `notify_cancel` (since 0.13.0). Python (post-TM-4 fix in 0.14.0): `set_async_task_bridge` + `transport_session_var` ContextVar — auto-wired by `serve()`/`async_serve()`. TypeScript: `setAsyncTaskBridge` (analogous wiring). The cross-SDK `ExecutionRouter.cancel(call_id, reason)` dispatcher remains a 0.15.0 roadmap item — see Execution Router "Cancellation Handling" section.
+
+---
+
+## Contract: TransportManager.start_stdio
+
+### Inputs
+- server: Server, required — configured MCP Server instance from MCPServerFactory
+- init_options: InitializationOptions, required — server identity and capabilities
+
+### Errors
+- IOError — when stdin/stdout is not available or pipe breaks
+- No explicit bind errors (stdio is process-bound)
+
+### Returns
+- On success: None — blocks until the stdio connection closes (parent process terminates or closes pipe); in-flight calls are abandoned on close (no cooperative drain)
+- Python-only transport (TypeScript uses its own stdio runner; Rust uses its own)
+
+### Properties
+- async: true
+- thread_safe: false
+- pure: false
+- idempotent: false
+- handles_sigterm: true
+
+---
+
+## Contract: TransportManager.start_http
+
+### Inputs
+- server: Server, required — configured MCP Server instance
+- init_options: InitializationOptions, required
+- host: str, optional, default="127.0.0.1" — bind address; must be non-empty
+- port: int, optional, default=8000, validates[1–65535], reject_with=ValueError
+- extra_routes: list[Route|Mount] | None, optional — additional Starlette routes
+- middleware: list[tuple[type, dict]] | None, optional — ASGI middleware stack
+
+### Errors
+- ValueError — when host is empty or port is outside 1–65535
+- OSError — when port is already in use (Address already in use)
+- Transport-level errors (malformed HTTP headers) are caught and logged without crashing
+
+### Returns
+- On success: None — blocks until SIGINT or SIGTERM; shared (Python + TypeScript); Rust uses its own HTTP transport implementation
+
+### Properties
+- async: true
+- thread_safe: true
+- pure: false
+- idempotent: false
+- handles_sigterm: true
+
+---
+
+## Contract: TransportManager.shutdown
+
+### Inputs
+- No parameters
+
+### Errors
+- No exceptions raised; shutdown is best-effort
+
+### Returns
+- On success: None — triggers graceful shutdown of active transport; closes connections; installs SIGINT/SIGTERM handlers that fire this path
+
+### Properties
+- async: true
+- thread_safe: true
+- pure: false
+- idempotent: true
+- handles_sigterm: true
