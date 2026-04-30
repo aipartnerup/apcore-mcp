@@ -85,7 +85,10 @@ Only errors derived from `ModuleError` (which are designed to be user-facing) ar
 ## Contract: ErrorMapper.to_mcp_error
 
 ### Inputs
-- error: Exception, required — any Python exception; duck-typed for ModuleError-like (must have `code`, `message`, `details` attributes for apcore path)
+- error: per-language input type, required:
+  - **Python**: `Exception` — any exception; duck-typed for ModuleError-like (must have `code`, `message`, `details` attributes for the apcore path)
+  - **TypeScript**: `unknown` — any value; duck-typed for ModuleError-like; non-matching values fall through to the INTERNAL_ERROR envelope
+  - **Rust**: `&apcore::ModuleError` only — strongly typed; for arbitrary `&dyn std::error::Error` use `to_mcp_error_any` (see EM-6 below)
 
 ### Errors
 - Never raises; all exceptions produce a valid error dict

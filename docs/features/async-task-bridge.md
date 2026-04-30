@@ -108,9 +108,11 @@ The bridge only projects apcore's lifecycle; it does not add new states. Termina
 
 ## Contract: AsyncTaskBridge.submit
 
+> **Trust boundary.** `submit()` is a trusted internal entrypoint reached only after the meta-tool dispatcher (`__apcore_task_submit` handler) has already validated `module_id`. The validation rule "non-empty string, not starting with `__apcore_`" is enforced at the dispatcher (see `## Contract: AsyncTaskBridge._handle_submit_tool`), not at `submit()` itself, so direct callers (tests, internal call sites) bypass it by design. The router uses the bridge's `is_reserved_id()` / `is_async_module_*()` guards before invoking `submit()` for the dynamic-routing path.
+
 ### Inputs
-- module_id: str, required, validates[non-empty string, not starting with `__apcore_`], reject_with=ValueError
-- arguments: dict[str, Any], required, validates[dict type], reject_with=ValueError
+- module_id: str, required, **validation deferred to caller** (meta-tool dispatcher in production; direct callers are trusted)
+- arguments: dict[str, Any], required
 - context: Context | None, optional — identity and trace_parent extracted when present
 - progress_token: Any | None, optional — when provided alongside send_notification, installs a progress sink in `context.data[MCP_PROGRESS_KEY]` before calling AsyncTaskManager.submit
 - send_notification: async callable | None, optional — paired with progress_token for fan-out
@@ -118,7 +120,7 @@ The bridge only projects apcore's lifecycle; it does not add new states. Termina
 
 ### Errors
 - TaskLimitExceededError(code=TASK_LIMIT_EXCEEDED) — when AsyncTaskManager max_tasks cap is reached (retryable: true)
-- ValueError — when module_id is empty or uses reserved `__apcore_` prefix
+- ValueError — propagated from `AsyncTaskManager.submit` if the underlying executor rejects the module
 
 ### Returns
 - On success: dict `{"task_id": str, "status": "pending"}` — immediate envelope; task runs in background

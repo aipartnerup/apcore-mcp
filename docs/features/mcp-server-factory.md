@@ -163,23 +163,56 @@ This ordering guarantees that extensions can observe every tool call but cannot 
 
 ---
 
-## Contract: MCPServerFactory.build
+## Composition Note
+
+`MCPServerFactory` does NOT expose a single composite `build()` method. The factory composes through three discrete steps that callers (or `serve()` / `async_serve()`) invoke in order:
+
+```
+create_server(name, version) → server
+build_tools(registry, options) → tools
+register_handlers(server, tools, router, ...) → server with handlers
+```
+
+The three Contract blocks below define each step. For HTTP transport, `build_init_options(server, name, version)` produces the `InitializationOptions` object passed to the transport layer.
+
+---
+
+## Contract: MCPServerFactory.create_server
+
+### Inputs
+- name: str, required, validates[non-empty, max 255 chars], reject_with=ValueError
+- version: str, optional, default="0.1.0"
+
+### Errors
+- ValueError — when name is empty or exceeds 255 chars
+
+### Returns
+- On success: MCP `Server` instance with no tools or handlers attached yet — caller proceeds to `build_tools` then `register_handlers`
+
+### Properties
+- async: false
+- thread_safe: false
+- pure: false
+- idempotent: false
+
+---
+
+## Contract: MCPServerFactory.build_tools
 
 ### Inputs
 - registry: Registry, required (duck-typed) — must expose `list(tags?, prefix?)` and `get_definition(module_id)` methods
-- name: str, required, validates[non-empty, max 255 chars], reject_with=ValueError
-- version: str, optional, default="0.1.0"
-- tags: list[str] | None, optional — filter modules by tags
-- prefix: str | None, optional — filter modules by ID prefix
-- strict: bool, optional, default=True — when True, prefers registry.export_schema(strict=True); falls back to local SchemaConverter
+- options: BuildToolsOptions, optional — fields:
+  - tags: list[str] | None — filter modules by tags
+  - prefix: str | None — filter modules by ID prefix
+  - strict: bool, default=True — when True, prefers registry.export_schema(strict=True); falls back to local SchemaConverter
 
 ### Errors
-- ValueError — when a module_id starts with reserved `__apcore_` prefix (hard config error, not silently skipped)
+- ValueError — when a discovered module_id starts with reserved `__apcore_` prefix (hard config error, not silently skipped)
 - Logs WARNING and skips the module — when build_tool raises for a non-reserved-prefix error (build continues for remaining modules)
 
 ### Returns
-- On success: MCP Server instance — fully configured with list_tools and call_tool handlers; ready for transport binding
-- On empty registry: Server with empty tool list (warning logged)
+- On success: list[Tool] — MCP Tool objects ready to register via `register_handlers`
+- On empty registry: empty list (warning logged)
 - Strict schema sourcing: tries `registry.export_schema(module_id, strict=True)` first; falls back to local SchemaConverter on miss/exception; Rust always uses local SchemaConverter (apcore Rust Registry lacks strict parameter)
 
 ### Properties

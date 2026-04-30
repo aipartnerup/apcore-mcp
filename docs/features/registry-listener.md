@@ -122,7 +122,7 @@ The Client Notification Bridge translates apcore Registry `register`/`unregister
 
 ### Properties
 - async: false
-- thread_safe: false
+- thread_safe: per-language — Rust: **true** (uses `AtomicBool::compare_exchange` on `_active`, safe to invoke from multiple threads). Python/TS: **false** (relies on single-threaded event-loop semantics — concurrent `start()` calls are not expected and not protected). Cross-language behaviour is benign because Python/TS callers cannot race `start()` in practice.
 - pure: false
 - idempotent: true
 
