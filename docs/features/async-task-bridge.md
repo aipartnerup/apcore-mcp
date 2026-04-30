@@ -152,7 +152,9 @@ The bridge only projects apcore's lifecycle; it does not add new states. Termina
 
 ---
 
-## Contract: AsyncTaskBridge.handle_status
+## Contract: AsyncTaskBridge._handle_status_tool
+
+> Private method — invoked internally via `handle_meta_tool()` dispatch, not called directly by external consumers.
 
 ### Inputs
 - task_id: str, required, validates[non-empty string], reject_with=error tuple
@@ -173,7 +175,9 @@ The bridge only projects apcore's lifecycle; it does not add new states. Termina
 
 ---
 
-## Contract: AsyncTaskBridge.cancel
+## Contract: AsyncTaskBridge._handle_cancel_tool
+
+> Private method — invoked internally via `handle_meta_tool()` dispatch, not called directly by external consumers.
 
 ### Inputs
 - task_id: str, required, validates[non-empty string], reject_with=error tuple

@@ -92,11 +92,11 @@ Only errors derived from `ModuleError` (which are designed to be user-facing) ar
 
 ### Returns
 - On success: dict with camelCase top-level keys — `isError: true`, `errorType: str`, `message: str`, `details: dict|None`
-- `isError` and `errorType` are camelCase at the wire level; Python dict uses snake_case keys (`is_error`, `error_type`) internally but MCP response layer converts to camelCase
+- All SDKs return camelCase keys directly — Python uses isError/errorType with no intermediate snake_case conversion
 - Additional optional fields: `retryable: bool`, `aiGuidance: str`, `userFixable: bool`, `suggestion: str` — populated from error attributes when present
-- `userFixable: true` for codes: DEPENDENCY_NOT_FOUND, DEPENDENCY_VERSION_MISMATCH, VERSION_CONSTRAINT_INVALID, BINDING_* error codes
-- Non-ModuleError exceptions → `error_type: "INTERNAL_ERROR"`, `message: "Internal error occurred"`, `details: null`
-- ExecutionCancelledError → `error_type: "EXECUTION_CANCELLED"`, `retryable: true`
+- `userFixable: true` — TypeScript only (hardcoded at errors.ts:241,273). Python: userFixable is attached only when error.user_fixable is truthy (via _attach_ai_guidance); DependencyNotFoundError does not set user_fixable by default, so Python responses for these codes will NOT include userFixable:true unless apcore sets it explicitly
+- Non-ModuleError exceptions → `errorType: "INTERNAL_ERROR"`, `message: "Internal error occurred"`, `details: null`
+- ExecutionCancelledError → `errorType: "EXECUTION_CANCELLED"`, `retryable: true`
 - On failure: returns hardcoded INTERNAL_ERROR dict (never raises)
 
 ### Properties
@@ -116,7 +116,7 @@ Only errors derived from `ModuleError` (which are designed to be user-facing) ar
 - Never raises; internal errors are converted to sanitized responses
 
 ### Returns
-- On success: dict with keys `is_error: True`, `error_type: str` (from error.code), `message: str`, `details: dict|None`
+- On success: dict with keys `isError: True`, `errorType: str` (from error.code), `message: str`, `details: dict|None`
 - CALL_DEPTH_EXCEEDED, CIRCULAR_CALL, CALL_FREQUENCY_EXCEEDED → sanitized "Internal error occurred" message
 - ACL_DENIED → sanitized "Access denied", details: null
 - SCHEMA_VALIDATION_ERROR → multi-line bulleted message with field-level errors; details preserved

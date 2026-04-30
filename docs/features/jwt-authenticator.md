@@ -28,7 +28,7 @@ The JWT Authenticator provides a pluggable security layer for HTTP-based MCP tra
 1. **Token Validator** — Decodes and verifies the signature, expiration (`exp`), audience (`aud`), and issuer (`iss`) of incoming JWTs.
 2. **Identity Mapper** — Translates JWT claims into the structured `Identity` object (id, type, roles, attributes) used by apcore's ACL system.
 3. **Request Guard** — Intercepts all incoming HTTP/SSE requests and returns `401 Unauthorized` if a valid token is missing (when required).
-4. **Context Bridge** — Uses context-local storage to securely pass the authenticated identity from the HTTP middleware to the tool execution handler — Python: `ContextVar`; TypeScript: `AsyncLocalStorage`; Rust: `tokio::task_local!`. Note that `authenticate()` is async in all three SDKs (post-JWT-1, CHANGELOG 0.14.0).
+4. **Context Bridge** — Uses context-local storage to securely pass the authenticated identity from the HTTP middleware to the tool execution handler — Python: `ContextVar`; TypeScript: `AsyncLocalStorage`; Rust: `tokio::task_local!`. Note that `authenticate()` is async in the TypeScript and Rust SDKs. Python remains synchronous (`def authenticate`, not `async def`) — the Contract block reflects the canonical Python behavior (`async: false`).
 
 ## Interfaces
 

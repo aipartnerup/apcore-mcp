@@ -96,6 +96,12 @@ All four fields are optional: when absent or `None` on the descriptor, the mappe
 
 ### Returns
 - On success: str — formatted annotation suffix starting with `\n\n` when non-empty; empty string `""` when annotations is None or all values are defaults
+- **mcp_extras:** For each key in `annotations.extra` starting with `mcp_` whose value is a string:
+  - Strip the `mcp_` prefix to get the stripped key
+  - Format as `{stripped_key}: {value}` (colon-space separator)
+  - Process in alphabetical order (sorted by original key)
+  - Append each as a separate `\n\n`-delimited section AFTER the `[Annotations: ...]` block
+  - An empty extras dict produces no additional output
 - On failure: returns `""` (never raises)
 
 ### Properties
