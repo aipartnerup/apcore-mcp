@@ -130,3 +130,49 @@ Only errors derived from `ModuleError` (which are designed to be user-facing) ar
 - thread_safe: true
 - pure: false
 - idempotent: true
+
+---
+
+## Contract: ErrorMapper.internal_error_response
+
+EM-6 generic-error fallback. Python and Rust expose this as a free helper alongside the class; TypeScript inlines the same envelope inside `toMcpError(error)` for any non-`ModuleError` input. All three SDKs MUST emit byte-identical envelopes to keep MCP clients' `errorType === "GENERAL_INTERNAL_ERROR"` branch portable.
+
+### Inputs
+- (none)
+
+### Errors
+- Never raises.
+
+### Returns
+- On success (Python): `dict` with keys `isError: True`, `errorType: "GENERAL_INTERNAL_ERROR"`, `message: "Internal error occurred"`, `details: None`
+- On success (Rust): `serde_json::Value` (object) with the same keys/values
+- On success (TS): equivalent object inlined inside `toMcpError(error)` for non-`ModuleError` inputs
+- camelCase wire keys; `errorType` is the exact string `"GENERAL_INTERNAL_ERROR"`; `details` is JSON null
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: true
+- idempotent: true
+
+---
+
+## Contract: ErrorMapper.to_mcp_error_any
+
+EM-6 generic-error fallback for arbitrary error inputs. Python signature `to_mcp_error_any(error: Exception)` and Rust signature `ErrorMapper::to_mcp_error_any<E: std::error::Error>(error: E)` both accept any error-like value and return the `internal_error_response()` envelope unchanged — they NEVER inspect the error's contents. TypeScript covers the same surface inside `toMcpError(error: unknown)` when the input fails the `ModuleError` shape check.
+
+### Inputs
+- error: any error-like value (Python `Exception`, Rust any `std::error::Error`, TS `unknown`) — required, no validation; the function deliberately ignores the contents to avoid leaking server-side detail
+
+### Errors
+- Never raises.
+
+### Returns
+- On success: identical envelope to `internal_error_response()` — `isError: true`, `errorType: "GENERAL_INTERNAL_ERROR"`, `message: "Internal error occurred"`, `details: null`
+- The original error's class name, message, traceback, or details are NEVER surfaced on the wire (security: avoid leaking internal state to MCP clients)
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: true
+- idempotent: true

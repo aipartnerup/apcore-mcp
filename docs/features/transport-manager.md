@@ -159,3 +159,32 @@ The manager installs signal handlers that trigger an internal shutdown event. Th
 - pure: false
 - idempotent: true
 - handles_sigterm: true
+
+---
+
+## Contract: TransportManager.set_async_task_bridge
+
+TM-4 transport-disconnect cancellation forwarding (0.14.0). Per-language method names: Python `set_async_task_bridge(bridge)`, TypeScript `setAsyncTaskBridge(bridge)`, Rust `set_cancel_handler(handler)` (with companion `notify_cancel(session_id)` since 0.13.0). All three SDKs share the contract below.
+
+The transport scopes a per-connection session id (Python: `transport_session_var` ContextVar; TS: per-request closure; Rust: tokio task-local). When `factory.handle_call_tool` runs, it forwards that session id as `session_key` to `bridge.submit(...)` so async tasks are tagged with the connection that started them. On transport teardown, the manager calls `bridge.cancel_session_tasks(session_id)` to cancel all in-flight async tasks for the disconnecting client. `serve()` / `async_serve()` / `APCoreMCP.serve` / `async_serve` wire this automatically when an `AsyncTaskBridge` is present.
+
+### Inputs
+- bridge: AsyncTaskBridge, required, validates[not_null], reject_with=TypeError(code=INVALID_ARG)
+  - Python type: `apcore_mcp.adapters.AsyncTaskBridge`
+  - TypeScript type: `AsyncTaskBridge` from `apcore-mcp/adapters`
+  - Rust equivalent: `Arc<dyn CancelHandler>` accepted by `set_cancel_handler`
+- The bridge must implement `cancel_session_tasks(session_id: str) -> None` (or language-equivalent)
+
+### Errors
+- TypeError(code=INVALID_ARG) — bridge is None / null / `Option::None`
+- No exceptions raised on overwrite — replacing an existing bridge is allowed (idempotent setter); a debug log line is emitted noting the replacement
+
+### Returns
+- On success: None / void / `()`
+- Side effect: stores the bridge reference on the TransportManager instance; subsequent transport-disconnect events will call `bridge.cancel_session_tasks(session_id)` with the per-connection session id captured at request time
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: false
+- idempotent: true

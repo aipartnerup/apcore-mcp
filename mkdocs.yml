@@ -63,10 +63,12 @@ nav:
       - Error Mapper: features/error-mapper.md
       - MCP Server Factory: features/mcp-server-factory.md
       - OpenAI Converter: features/openai-converter.md
+      - Extension Bridge: features/extension-bridge.md
       - Transport Manager: features/transport-manager.md
       - Registry Listener: features/registry-listener.md
       - JWT Authenticator: features/jwt-authenticator.md
       - Approval Handler: features/approval-handler.md
+      - Async Task Bridge: features/async-task-bridge.md
       - Explorer UI: features/explorer-ui.md
   - Specifications:
       - Product Requirements: prd-apcore-mcp.md
