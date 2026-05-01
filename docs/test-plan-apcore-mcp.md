@@ -3,13 +3,15 @@
 | Field       | Value                                                        |
 |-------------|--------------------------------------------------------------|
 | Title       | apcore-mcp Test Plan & Test Cases                            |
-| Version     | 1.7                                                          |
-| Date        | 2026-04-23                                                   |
+| Version     | 1.8                                                          |
+| Date        | 2026-04-28                                                   |
 | Author      | aiperceivable QA Team                                          |
 | Status      | Draft                                                        |
 | PRD Ref     | `docs/prd-apcore-mcp.md` v1.8                               |
-| Tech Design | `docs/tech-design-apcore-mcp.md` v1.8                       |
+| Tech Design | `docs/tech-design-apcore-mcp.md` v1.9                       |
 | License     | Apache 2.0                                                   |
+
+> **v1.8 — 2026-04-28**: added §9e Async Task Bridge (TC-ASYNC-001..024) and §9f Extension Bridge (TC-EXTMGR-001..009) to cover F-043 and F-042. Three TC-EXTMGR cases marked DEFERRED pending the spec/implementation decision on `ExtensionManager.apply()`.
 
 ---
 
@@ -19,9 +21,9 @@
 
 This document defines the comprehensive test plan and test cases for **apcore-mcp**, the automatic MCP Server and OpenAI Tools Bridge for the apcore ecosystem. As a greenfield project developed under TDD strict mode, this test plan establishes the testing standard before any implementation code is written. Every test case defined here will be implemented as executable pytest code prior to the corresponding production code.
 
-The scope covers 27 PRD features (F-001 through F-020, F-026 through F-032) across 13 architectural components: Schema Converter, Annotation Mapper, Execution Router, Error Mapper, MCP Server Factory, OpenAI Converter, Transport Manager, CLI Module, Dynamic Registry Listener, MCP Tool Explorer, JWT Authentication, Approval Handler, and Custom Output Formatter. Testing spans five levels: unit, integration, end-to-end, performance, and security.
+The scope covers 46 PRD features (F-001..F-046) across the architectural components: Schema Converter, Annotation Mapper, Execution Router, Error Mapper, MCP Server Factory, OpenAI Converter, Transport Manager, CLI Module, Dynamic Registry Listener, MCP Tool Explorer, JWT Authentication, Approval Handler, Custom Output Formatter, Pipeline Strategy, Trace Exposure, Output Redaction, Preflight Validation, Annotation Metadata Passthrough, Extension Bridge (F-042), and Async Task Bridge (F-043). Testing spans five levels: unit, integration, end-to-end, performance, and security.
 
-> **Note:** Test cases for F-027 (JWT Authentication), F-028 (Approval System), F-029 (AI Guidance Fields), F-030 (AI Intent Metadata), F-031 (Streaming Annotations), and F-032 (Custom Output Formatter) are pending addition. See CHANGELOG v0.7.0–v0.10.0 for feature specifications.
+> **Coverage gaps (test cases pending addition):** F-033 (Config Bus Namespace), F-034 (Error Formatter Registry), F-035 (Dot-Namespaced Events), F-037 (Trace Exposure), F-039 (Preflight Validation), F-040 (YAML Pipeline Config), F-041 (Annotation Metadata Passthrough), F-044 (Bidirectional Cancellation), F-045 (Observability), F-046 (Cross-SDK Cancel Dispatcher). TC-AUTH-* (F-027), TC-APPROVAL-* (F-028), TC-ASYNC-* (F-043), and TC-EXTMGR-* (F-042) are already included below.
 
 ### 1.2 Test Objectives
 
@@ -3381,6 +3383,113 @@ Uses real apcore modules from `examples/extensions/` (greeting, math_calc, text_
 
 ---
 
+## 9e. Async Task Bridge Test Cases (TC-ASYNC-xxx)
+
+Trace target: **F-043** / FR-ASYNC-001..006. Cross-SDK regression tests live in:
+
+- Python: `apcore-mcp-python/tests/server/test_async_task_bridge.py`, `tests/server/test_factory.py::TestAsyncDispatch`, `tests/server/test_transport.py::TestTM4CancellationForwarding`.
+- TypeScript: `apcore-mcp-typescript/tests/server/asyncTaskBridge.test.ts`.
+- Rust: `apcore-mcp-rust/src/server/async_task_bridge.rs::tests`.
+
+### Unit Tests: Async-hint detection (TC-ASYNC-001 to TC-ASYNC-003)
+
+| ID | Description | Input | Expected Result | Traces to |
+|----|-------------|-------|-----------------|-----------|
+| TC-ASYNC-001 | `metadata.async = true` is treated as async | descriptor.metadata={"async": True} | `is_async_module(descriptor) == True` | FR-ASYNC-001 |
+| TC-ASYNC-002 | `annotations.extra.mcp_async = "true"` is treated as async | descriptor.annotations.extra={"mcp_async": "true"} | `is_async_module(descriptor) == True` | FR-ASYNC-001 |
+| TC-ASYNC-003 | descriptor without hints is sync | plain descriptor | `is_async_module(descriptor) == False` | FR-ASYNC-001 |
+
+### Unit Tests: Submit / Status / Cancel / List meta-tools (TC-ASYNC-004 to TC-ASYNC-013)
+
+| ID | Description | Input | Expected Result | Traces to |
+|----|-------------|-------|-----------------|-----------|
+| TC-ASYNC-004 | `__apcore_task_submit` returns `{task_id, status: "pending"}` immediately | async-hinted descriptor + arguments | Envelope returned synchronously; task runs in background | FR-ASYNC-001 |
+| TC-ASYNC-005 | `__apcore_task_submit` against non-async module raises `ASYNC_MODULE_NOT_ASYNC` | sync descriptor | ErrorMapper returns `error_type="ASYNC_MODULE_NOT_ASYNC"` | FR-ASYNC-001 |
+| TC-ASYNC-006 | `__apcore_task_status` projects TaskInfo for known id | submitted task_id | `{task_id, module_id, status, submitted_at, ...}` | FR-ASYNC-002 |
+| TC-ASYNC-007 | `__apcore_task_status` returns `ASYNC_TASK_NOT_FOUND` for unknown id | random uuid | ErrorMapper returns `error_type="ASYNC_TASK_NOT_FOUND"` | FR-ASYNC-002 |
+| TC-ASYNC-008 | terminal `completed` status embeds redacted result | task that returned `{password: "..."}` | result field present, sensitive keys → `"***REDACTED***"` | FR-ASYNC-005 |
+| TC-ASYNC-009 | terminal `failed` status embeds Error Mapper output | task that raised ModuleError | error field present in MCP envelope shape | FR-ASYNC-005 |
+| TC-ASYNC-010 | `__apcore_task_cancel` invokes `manager.cancel(task_id)` | running task_id | `{task_id, cancelled: true}`, CancelToken propagated | FR-ASYNC-003 |
+| TC-ASYNC-011 | `__apcore_task_list` filters by status | status="running" | only running tasks returned | FR-ASYNC-004 |
+| TC-ASYNC-012 | `__apcore_task_list` without filter returns all | no status arg | `{tasks: TaskInfo[]}` for every tracked task | FR-ASYNC-004 |
+| TC-ASYNC-013 | reserved `__apcore_` prefix rejected for user modules at registration | user calls `factory.build_tool({module_id: "__apcore_x"})` | factory raises `FactoryError::ReservedPrefix` | F-043 |
+
+### Unit Tests: Capacity & error surfacing (TC-ASYNC-014 to TC-ASYNC-016)
+
+| ID | Description | Input | Expected Result | Traces to |
+|----|-------------|-------|-----------------|-----------|
+| TC-ASYNC-014 | submission past `max_tasks` raises `ASYNC_CAPACITY_EXCEEDED` | bridge constructed `with_limits(max_tasks=2)`, three submits | third submit produces `error_type="ASYNC_CAPACITY_EXCEEDED"`, `retryable: true` | FR-ASYNC-001 |
+| TC-ASYNC-015 | TaskLimitExceeded message carries AI guidance | exceeded limits | response includes `aiGuidance` mentioning `__apcore_task_cancel` | FR-ASYNC-001 |
+| TC-ASYNC-016 | bridge.shutdown() awaits manager.shutdown() | running task on graceful exit | task transitions to cancelled before shutdown returns | F-043 |
+
+### Unit Tests: Progress notifications (TC-ASYNC-017 to TC-ASYNC-019)
+
+| ID | Description | Input | Expected Result | Traces to |
+|----|-------------|-------|-----------------|-----------|
+| TC-ASYNC-017 | `_meta.progressToken` triggers progress fan-out | submit with progressToken=X, module emits 3 progress events | 3 `notifications/progress` sent on session, plus one terminal | FR-ASYNC-006 |
+| TC-ASYNC-018 | progress sink failure logs WARNING but task continues | sink raises | task still completes; warning logged | FR-ASYNC-006 |
+| TC-ASYNC-019 | no progressToken → no notifications | submit without progressToken | zero `notifications/progress` events | FR-ASYNC-006 |
+
+### Integration Tests: Transport-disconnect cancellation (TC-ASYNC-020 to TC-ASYNC-024)
+
+Validates the TM-4 wiring from `TransportManager.set_async_task_bridge` → `bridge.cancel_session_tasks(session_id)` on transport teardown.
+
+| ID | Description | Input | Expected Result | Traces to |
+|----|-------------|-------|-----------------|-----------|
+| TC-ASYNC-020 | `set_async_task_bridge` stores bridge | bridge with `cancel_session_tasks` | accessor returns the same instance | F-043, TM-4 |
+| TC-ASYNC-021 | `_scoped_session` sets+resets `transport_session_var` | enter/exit context | contextvar holds id only inside | F-043, TM-4 |
+| TC-ASYNC-022 | exit calls `bridge.cancel_session_tasks(session_id)` once | bridge mock | `assert_awaited_once_with(session_id)` | F-043, TM-4 |
+| TC-ASYNC-023 | bridge raise during cancel does NOT propagate | bridge that raises | scoped session exits cleanly | F-043, TM-4 |
+| TC-ASYNC-024 | `factory.handle_call_tool` forwards `session_key=transport_session_var.get()` to `bridge.submit` | submit inside scoped session | submitted task is registered under that session id | F-043, TM-4 |
+
+---
+
+## 9f. Extension Bridge Test Cases (TC-EXTMGR-xxx)
+
+Trace target: **F-042** / FR-EXTMGR-001..003.
+
+> **Status note for 0.14.0**: FR-EXTMGR-001 (`ExtensionManager.apply()`) is uniform spec drift across all three SDKs and is being recommended for spec revision; tests TC-EXTMGR-001..003 are written against the current code path (no-op for `extensions=None`, kwarg precedence works). FR-EXTMGR-002 is partially implemented as **EB-2** in this release: Python and TypeScript expose `schema_converter` / `annotation_mapper` / `error_mapper` kwargs on `serve()`. Rust deferred — its adapters are stateless unit structs (see CHANGELOG `Deferred to a future release`).
+
+### Unit Tests: Adapter-hook precedence (TC-EXTMGR-001 to TC-EXTMGR-006)
+
+| ID | Description | Input | Expected Result | Traces to |
+|----|-------------|-------|-----------------|-----------|
+| TC-EXTMGR-001 | factory uses default adapters when no overrides | `MCPServerFactory()` | built-in `SchemaConverter` / `AnnotationMapper` / `ErrorMapper` instances created | FR-EXTMGR-002 |
+| TC-EXTMGR-002 | factory uses caller-supplied `schema_converter` | `MCPServerFactory(schema_converter=Custom())` | `Custom` instance used; default not constructed | FR-EXTMGR-002 |
+| TC-EXTMGR-003 | factory uses caller-supplied `annotation_mapper` | `MCPServerFactory(annotation_mapper=Custom())` | `Custom` instance used | FR-EXTMGR-002 |
+| TC-EXTMGR-004 | factory uses caller-supplied `error_mapper` | `MCPServerFactory(error_mapper=Custom())` | `Custom` instance used | FR-EXTMGR-002 |
+| TC-EXTMGR-005 | `serve(schema_converter=…)` plumbs through to factory | `serve(registry, schema_converter=Custom())` | factory receives the same instance | FR-EXTMGR-002 |
+| TC-EXTMGR-006 | `async_serve(error_mapper=…)` plumbs through to factory | `async_serve(registry, error_mapper=Custom())` | factory receives the same instance | FR-EXTMGR-002 |
+
+### Unit Tests: ExtensionManager wiring (TC-EXTMGR-007 to TC-EXTMGR-009) — DEFERRED
+
+| ID | Description | Input | Expected Result | Status |
+|----|-------------|-------|-----------------|--------|
+| TC-EXTMGR-007 | `serve(extensions=mgr)` invokes `mgr.apply(registry, executor)` once before built-in middleware | mock ExtensionManager | apply called exactly once; sentinel `_mcp_applied=True` set | DEFERRED — apply() not implemented in any SDK; tracked under EB-1 |
+| TC-EXTMGR-008 | duplicate `apply()` (pre-wired Executor) emits WARNING but does not raise | second apply() on same target | WARNING logged; no raise | DEFERRED — see EB-1 |
+| TC-EXTMGR-009 | load-order is apply() → built-in middleware → adapter binding → handlers | trace registration calls | sequence matches | DEFERRED — see EB-1 |
+
+---
+
+## 9g. v0.14.0 Regression Coverage
+
+This subsection lists each v0.14.0 fix ID and the corresponding test cases or test files that exercise it. Where TC IDs are not yet allocated, the file path of the regression suite is given.
+
+| Fix ID | Description | TC IDs / Test File Coverage |
+|--------|-------------|------------------------------|
+| **TM-4** | Python transport-disconnect cancellation forwarding | TC-ASYNC-020..024 (existing) |
+| **EM-3** | USER_FIXABLE error codes (dependency/binding errors) | 9 Python regression tests in `apcore-mcp-python/tests/adapters/test_errors.py` + 5 Rust tests in `apcore-mcp-rust/tests/adapters/errors_test.rs` |
+| **EM-6** | Rust generic-error fallback (`internal_error_response` + `to_mcp_error_any`) | 3 Rust regression tests in `apcore-mcp-rust/tests/adapters/errors_test.rs` |
+| **EM-1** | Cross-SDK alignment for `McpErrorFormatter` canonical name + `MCPErrorFormatter` alias | cross-SDK alignment test (Python alias export, TS/Rust canonical names) |
+| **OC-1** | TypeScript strict-mode walker parity | 6 TS regression tests in `apcore-mcp-typescript/tests/converters/openai.test.ts` |
+| **OC-5** | Rust `convert_registry` accepts `&Registry` directly + `convert_registry_json` snapshot variant | 4 Rust regression tests for `convert_registry`/`convert_registry_json` |
+| **JWT-1** | Cross-SDK Authenticator headers-map signature unification | regression: TS `authenticate(Record<string,string>)`, Python async `authenticate`, `extractHeaders` helper |
+| **AH-1** | Rust per-request elicit task-local | 4 regression tests for Rust `tokio::task_local! ELICIT_CALLBACK` in `apcore_mcp::helpers` |
+| **EUI-1** | mcp-embedded-ui 0.4.0 `/validate` endpoint flow-through | integration tests TC-011 in all three SDKs covering POST `/tools/{name}/validate` |
+| **MID-5 / MID-6** | Bijection-guarded denormalize variants and middleware ordering fixes | 8 Python + 9 TypeScript + 5 Rust tests (per CHANGELOG 0.14.0) |
+
+---
+
 ## 10. Test Data Specification
 
 ### 10.1 Sample ModuleDescriptor Instances
@@ -3730,7 +3839,7 @@ NNN = Zero-padded sequential number (001, 002, ...)
 | Reference                                | Description                                            |
 |------------------------------------------|--------------------------------------------------------|
 | `docs/prd-apcore-mcp.md`                | Product Requirements Document v1.0                     |
-| `docs/tech-design-apcore-mcp.md`        | Technical Design Document v1.0                         |
+| `docs/tech-design-apcore-mcp.md`        | Technical Design Document v1.9                         |
 | IEEE 829                                 | Standard for Software Test Documentation               |
 | ISTQB Foundation Level Syllabus          | International Software Testing Qualifications Board    |
 | Google Testing Blog                      | Best practices for test strategy and test pyramid      |

@@ -67,7 +67,7 @@ The original sync run analyzed 4 of 14 modules (registry-listener, async-task-br
 - **EUI-1 (high)** Spec mandates `POST /explorer/tools/<id>/validate` but **no language registers it**. `ExecutionRouter.validate_tool` exists everywhere but the explorer UI cannot reach it via the documented endpoint.
 
 ### module-id-normalizer
-- **MID-5 (high)** `denormalize` is unvalidated and not a true inverse of `normalize` — the bijection only holds on the image of `normalize`. All three SDKs blindly transform any string. Shared contract gap, not a divergence.
+- ~~**MID-5 (high)**~~ ✅ **Resolved 2026-04-28** — all three SDKs now expose a bijection-guarded variant: `try_denormalize` (Python) / `tryDenormalize` (TS) / `denormalize_checked` (Rust). The plain `denormalize` stays lenient (backwards compatible). The new variant runs the dash→dot replacement and validates the result against `MODULE_ID_PATTERN`, returning `None` / `null` / `Err(InvalidModuleId)` on a non-pre-image input. Useful for sanitizing OpenAI tool-call responses against the registered module set. 8 Python + 9 TS + 5 Rust regression tests added.
 
 ## Medium and low findings
 
@@ -133,22 +133,24 @@ The following 14 cross-language fixes from the 24 critical/high deferred finding
 - ✅ **SC-18** `inject_strict` and `ensure_object_type` preserve `type: ["object", "null"]` (no nullable downgrade)
 - ✅ **AH-3** approval-handler catches elicit-callback panics via `futures::FutureExt::catch_unwind`
 
-## Outstanding critical/high (10 of 24)
+## Outstanding critical/high (1 of 24 — EB-1 is a spec drift recommended for 0.16 spec update; TM-1/2/3 remain as cosmetic API parity)
 
 These require either substantial new features, public API changes, or upstream coordination:
 
 | ID | Module | Why deferred |
 |---|---|---|
-| **AH-1** | approval-handler | Rust reads elicit from constructor field, not request.context — architectural rewrite needed |
-| **EM-1** | error-mapper | `McpErrorFormatter` + `register_mcp_formatter` symbols missing at module scope in Python+TS — they may exist elsewhere; needs investigation |
-| **EM-3** | error-mapper | TS stamps `userFixable:true` on dependency/binding errors; Python+Rust don't — design decision: align which way? |
-| **EM-6** | error-mapper | Rust `to_mcp_error(&ModuleError)` only accepts ModuleError; no internal-error fallback for arbitrary errors. Public API change. |
-| **JWT-1** | jwt-authenticator | Authenticator input type diverges (Python `dict`, TS `IncomingMessage`, Rust `&HashMap`). Public API breaking change. |
-| **OC-1** | openai-converter | TS strict-mode walker is less aggressive than Python+Rust (no x-llm-description promotion, no `oneOf`/`anyOf`/`allOf` recursion). Substantial rewrite OR delegate to apcore-js. |
-| **OC-5** | openai-converter | Rust `convert_registry` takes `&Value` not Registry trait. Public API breaking change. |
-| **TM-1/2/3/4** | transport-manager | Python `TransportManager` is missing `/usage`, auth integration, explorer wiring, cancellation forwarding — 4 features TS+Rust both have. ~hours of work. |
-| **EB-1/2** | extension-bridge | `ExtensionManager.apply()` and adapter-hook kwargs unimplemented in all 3 SDKs. Cross-language API design. |
-| **EUI-1** | explorer-ui | `POST /explorer/tools/<id>/validate` endpoint missing in all 3. Needs `mcp-embedded-ui` upstream support. |
+| ~~**AH-1**~~ | ~~approval-handler~~ | ✅ **Resolved 2026-04-28** — added `tokio::task_local! ELICIT_CALLBACK` in `apcore_mcp::helpers`. `ElicitationApprovalHandler::request_approval` now reads the callback from the task-local first (matching Python+TS per-request scoping), falling back to the constructor field. apcore-rust's `Context::data` is `HashMap<String, serde_json::Value>` and cannot hold boxed `Fn`s, so a task-local is the closest cross-SDK equivalent to context.data without forcing an apcore-rust API extension. 4 regression tests added. |
+| ~~**EM-1**~~ | ~~error-mapper~~ | ✅ **Resolved 2026-04-28** — investigation showed both symbols already existed; the only divergence was Python's class name `MCPErrorFormatter` (all-caps `MCP`) vs TS+Rust's `McpErrorFormatter` (PascalCase). Added `McpErrorFormatter` as the canonical Python class name and kept `MCPErrorFormatter` as a backwards-compatible alias. Both names are now exported from `apcore_mcp` and `apcore_mcp.adapters`. |
+| ~~**EM-3**~~ | ~~error-mapper~~ | ✅ **Resolved 2026-04-28** — Python `ErrorMapper` and Rust `to_mcp_error` now stamp `userFixable=true` for `DEPENDENCY_NOT_FOUND`, `DEPENDENCY_VERSION_MISMATCH`, `VERSION_CONSTRAINT_INVALID`, and the four `BINDING_*` codes (matches TypeScript). Rust adds `USER_FIXABLE_ERROR_CODES` const + stamp in `build_detail_response`. Python adds `_USER_FIXABLE_ERROR_CODES` set. 9 Python regression tests + 5 Rust regression tests added. |
+| ~~**EM-6**~~ | ~~error-mapper~~ | ✅ **Resolved 2026-04-28** — Rust adds `ErrorMapper::internal_error_response()` and `ErrorMapper::to_mcp_error_any<E: std::error::Error>()`, matching Python's `to_mcp_error(error: Exception)` and TypeScript's `toMcpError(error: unknown)` signatures. Returns the `{is_error: true, error_type: "GENERAL_INTERNAL_ERROR", message: "Internal error occurred", details: null}` envelope for any non-`ModuleError` input. 3 regression tests added. |
+| ~~**JWT-1**~~ | ~~jwt-authenticator~~ | ✅ **Resolved 2026-04-28** — unified to `authenticate(headers: HeaderMap) -> Awaitable<Identity \| null>` across all three SDKs. **TS** swapped `IncomingMessage` for `Record<string, string>` and exports `extractHeaders(req)` migration helper. **Python** changed `Authenticator.authenticate` to `async`; new `call_authenticator(auth, headers)` helper supports legacy sync implementations transparently (inspects coroutine return). **Rust** already aligned. JWT regression tests rewritten to async. |
+| ~~**OC-1**~~ | ~~openai-converter~~ | ✅ **Resolved 2026-04-28** — TS strict-mode walker now mirrors apcore's canonical strict pipeline: promotes `x-llm-description` → `description`, strips all `x-*` extension keys after promotion, recurses into `oneOf`/`anyOf`/`allOf` and `$defs`/`definitions`, sorts property names alphabetically, and removes `default` values. 6 regression tests added in `tests/converters/openai.test.ts`. Output now matches Python+Rust (which delegate to apcore's `to_strict_schema`). |
+| ~~**OC-5**~~ | ~~openai-converter~~ | ✅ **Resolved 2026-04-28** — Rust `convert_registry` is now the canonical entrypoint and takes `&apcore::registry::Registry` directly (matches Python+TS duck-typed Registry). The pre-0.15 `&Value`-snapshot variant was renamed to `convert_registry_json` and remains available for callers that hold a serialized snapshot. `APCoreMCP::to_openai_tools` now passes the live registry through, avoiding a redundant clone+reparse round trip. 4 regression tests added. |
+| **TM-1/2/3** | transport-manager | Python `TransportManager` lacks setter API for `/usage`, auth, explorer (these *function* via the wrapper-level `apcore_mcp.py` / `__init__.py`, but the bare `TransportManager` doesn't expose `set_usage_collector` / `set_authenticator` / `set_explorer` as TS+Rust do). Cosmetic API parity, not a functional gap. |
+| ~~**TM-4**~~ | ~~transport-manager~~ | ✅ **Resolved 2026-04-28** — Python `TransportManager` now has `set_async_task_bridge(bridge)` plus a `transport_session_var` ContextVar. StreamableHTTP and SSE transports scope the session id via `_scoped_session()`, which calls `bridge.cancel_session_tasks(session_id)` on context exit. `factory.handle_call_tool` reads the contextvar and forwards `session_key` to `bridge.submit()`. Wired automatically by both `serve()` and `APCoreMCP.serve/async_serve` when an async bridge is present. 6 regression tests added in `tests/server/test_transport.py::TestTM4CancellationForwarding`. |
+| ~~**EB-2**~~ | ~~extension-bridge~~ | ✅ **Resolved 2026-04-28 (Python+TS)** — `serve()` and `async_serve()` now accept optional `schema_converter` / `annotation_mapper` / `error_mapper` kwargs in Python and TS. The factory uses caller-supplied instances when present, falling back to defaults. **Rust deferred to 0.16** — adapters in apcore-mcp-rust are stateless unit structs (`SchemaConverter`, `AnnotationMapper`) with only static methods, so override injection requires a trait-based redesign (out of scope for apcore 0.19.0 features). |
+| **EB-1** | extension-bridge | `ExtensionManager.apply()` not implemented in any SDK — uniform spec drift, not a cross-SDK divergence. **Recommended: spec update** to remove `apply()` step from the load-order contract since none of the three SDKs need it (extensions are loaded directly into the factory via Config Bus or kwargs). Defer to 0.16 spec revision. |
+| ~~**EUI-1**~~ | ~~explorer-ui~~ | ✅ **Resolved 2026-04-28** — mcp-embedded-ui 0.4.0 ships `POST /tools/{name}/validate` (F7). apcore-mcp Python/TS/Rust SDKs bumped to `mcp-embedded-ui >= 0.4.0`; route flows automatically through the existing `create_mount` / `createNodeHandler` adapters. TC-011 integration tests added in all three SDKs. |
 
 ## Recommendation
 
@@ -157,7 +159,7 @@ The 14 landed fixes cover the most-leverage items that were doable without (a) p
 - **TM-1/2/3/4** is the largest concrete-add: do it Python-by-Python (auth → /usage → explorer → cancellation).
 - **EB-1/2** needs a cross-language API design conversation before any code lands.
 - **JWT-1, OC-5, EM-6** are public API breaks — release-planning items.
-- **EUI-1** needs an mcp-embedded-ui PR first.
+- ~~**EUI-1** needs an mcp-embedded-ui PR first.~~ ✅ Resolved by mcp-embedded-ui 0.4.0 (2026-04-28).
 - **AH-1** needs apcore-rs-side context plumbing or an apcore-mcp design change.
 
 Suggested next step: triage the 10 outstanding items into "do in 0.15", "release-planning", and "spec-update-instead" buckets before further work.

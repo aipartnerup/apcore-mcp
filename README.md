@@ -40,21 +40,21 @@
     ```bash
     pip install apcore-mcp
     ```
-    *Requires Python 3.11+ and apcore 0.17.1+.*
+    *Requires Python 3.11+ and apcore 0.19.0+.*
 
 === "📘 TypeScript"
 
     ```bash
     npm install apcore-mcp
     ```
-    *Requires Node.js 18+ and apcore 0.17.1+.*
+    *Requires Node.js 18+ and apcore-js >=0.19.0.*
 
 === "🦀 Rust"
 
     ```bash
     cargo add apcore-mcp
     ```
-    *Requires Rust 1.75+ and apcore 0.17.1+.*
+    *Requires Rust 1.75+ and apcore = "0.19.0".*
 
 ---
 
@@ -128,9 +128,10 @@
 === "📘 TypeScript"
 
     ```typescript
-    import { toOpenaiTools } from "apcore-mcp";
+    import { APCoreMCP } from "apcore-mcp";
 
-    const tools = toOpenaiTools("./extensions");
+    const mcp = new APCoreMCP("./extensions");
+    const tools = mcp.toOpenaiTools();
     ```
 
 === "🦀 Rust"
@@ -183,10 +184,12 @@ The project is architected as a set of modular features, each with its own speci
 - [Error Mapper](docs/features/error-mapper.md) — Protocol-compliant error feedback
 - [MCP Server Factory](docs/features/mcp-server-factory.md) — Core server builder
 - [OpenAI Converter](docs/features/openai-converter.md) — Tool exporter for OpenAI
+- [Extension Bridge](docs/features/extension-bridge.md) — Wires apcore ExtensionManager into MCP pipeline
 - [Transport Manager](docs/features/transport-manager.md) — Stdio/HTTP connectivity
 - [Registry Listener](docs/features/registry-listener.md) — Hot-reloading capabilities
 - [JWT Authenticator](docs/features/jwt-authenticator.md) — Bearer token security
 - [Approval Handler](docs/features/approval-handler.md) — Human-in-the-loop elicitation
+- [Async Task Bridge](docs/features/async-task-bridge.md) — Routes async-hinted modules to apcore's AsyncTaskManager
 - [Explorer UI](docs/features/explorer-ui.md) — Interactive dev dashboard
 
 ---
@@ -195,7 +198,9 @@ The project is architected as a set of modular features, each with its own speci
 
 - **[Full Documentation Site](https://aiperceivable.github.io/apcore-mcp/)**
 - **[Getting Started Guide](docs/getting-started.md)** — Installation and basic setup
-- [Specifications (PRD, TDD, SRS)](docs/spec/)
+- [PRD](docs/prd-apcore-mcp.md)
+- [SRS](docs/srs-apcore-mcp.md)
+- [Tech Design](docs/tech-design-apcore-mcp.md)
 
 ---
 
@@ -203,9 +208,9 @@ The project is architected as a set of modular features, each with its own speci
 
 | Language | Repository | Package | Status |
 |----------|-----------|---------|--------|
-| Python | [apcore-mcp-python](https://github.com/aiperceivable/apcore-mcp-python) | `pip install apcore-mcp` | ✅ v0.10.x |
-| TypeScript | [apcore-mcp-typescript](https://github.com/aiperceivable/apcore-mcp-typescript) | `npm install apcore-mcp` | ✅ v0.10.x |
-| Rust | [apcore-mcp-rust](https://github.com/aiperceivable/apcore-mcp-rust) | `cargo add apcore-mcp` | ✅ v0.10.x |
+| Python | [apcore-mcp-python](https://github.com/aiperceivable/apcore-mcp-python) | `pip install apcore-mcp` | ✅ v0.14.0 |
+| TypeScript | [apcore-mcp-typescript](https://github.com/aiperceivable/apcore-mcp-typescript) | `npm install apcore-mcp` | ✅ v0.14.0 |
+| Rust | [apcore-mcp-rust](https://github.com/aiperceivable/apcore-mcp-rust) | `cargo add apcore-mcp` | ✅ v0.14.0 |
 | Go | apcore-mcp-go | — | Planned |
 
 ## License

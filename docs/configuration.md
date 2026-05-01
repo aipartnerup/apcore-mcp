@@ -82,7 +82,7 @@ The unified entry point — configure once, use everywhere.
       prefix: undefined,
       logLevel: undefined,
       validateInputs: false,
-      outputFormatter: toMarkdown, // default: Markdown; set to null for raw JSON
+      outputFormatter: undefined, // default: undefined - raw JSON
       authenticator: undefined,
       requireAuth: true,
     });

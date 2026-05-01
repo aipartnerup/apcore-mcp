@@ -9,7 +9,7 @@
 | Author      | aiperceivable Engineering Team                                             |
 | Status      | Draft                                                                    |
 | PRD Ref     | `docs/prd-apcore-mcp.md` v1.8                                           |
-| Tech Design | `docs/tech-design-apcore-mcp.md` v1.8                                   |
+| Tech Design | `docs/tech-design-apcore-mcp.md` v1.9                                   |
 | Standard    | IEEE 830 / ISO/IEC/IEEE 29148                                            |
 
 ---
@@ -104,7 +104,7 @@ apcore-mcp does NOT reimplement the MCP protocol (it uses the official `mcp` Pyt
 | ID   | Reference | Description |
 |------|-----------|-------------|
 | REF-01 | `docs/prd-apcore-mcp.md` v1.0 | Product Requirements Document -- primary input for this SRS |
-| REF-02 | `docs/tech-design-apcore-mcp.md` v1.0 | Technical Design Document -- architecture and API details |
+| REF-02 | `docs/tech-design-apcore-mcp.md` v1.9 | Technical Design Document -- architecture and API details |
 | REF-03 | `ideas/apcore-mcp.md` | Original idea document with schema mapping and architecture context |
 | REF-04 | apcore-python source (`apcore` package) | SDK source: Registry, Executor, ModuleDescriptor, ModuleAnnotations, error hierarchy |
 | REF-05 | [MCP Specification](https://modelcontextprotocol.io/) | Official Model Context Protocol specification |
@@ -3641,12 +3641,12 @@ mcp:
 | Field | Value |
 |-------|-------|
 | **ID** | NFR-COMPAT-002 |
-| **Title** | Compatible with apcore-python >= 0.17.0 |
-| **Target** | apcore >= 0.17.0, < 1.0 |
+| **Title** | Compatible with apcore-python >= 0.19.0 |
+| **Target** | apcore >= 0.19.0, < 1.0 |
 | **Measurement** | Integration tests against latest apcore-python release |
 | **Traces to** | PRD Section 8.3 |
 
-**Description:** apcore-mcp shall declare a dependency on `apcore>=0.17.0,<1.0` and shall be tested against the latest release within that range. Version 0.17.0 is required for Pipeline v2 delegation (`PipelineEngine.run()`), call-chain guard rename (`safety_check` → `call_chain_guard`), corrected step order (middleware before input validation), Step metadata fields, YAML pipeline configuration, and sensitive field redaction utility. Prior features: Config Bus namespace registration (§9.4), Error Formatter Registry (§8.8), dot-namespaced event types (§9.16), Context `ContextKey[T]`, ACL condition handlers, and `Annotations.extra`.
+**Description:** apcore-mcp shall declare a dependency on `apcore>=0.19.0,<1.0` and shall be tested against the latest release within that range. Version 0.19.0 is required for the AsyncTaskManager primitives (F-043 Async Task Bridge), W3C TraceContext propagation (FR-EXTMGR / FR-OBSERVABILITY chains), the 12-field ModuleAnnotations dataclass (annotation passthrough — F-041), and the dependency/binding error classes consumed by EM-3 USER_FIXABLE error dispatch. Prior features carried forward: Pipeline v2 delegation (`PipelineEngine.run()`), call-chain guard rename (`safety_check` → `call_chain_guard`), corrected step order (middleware before input validation), Step metadata fields, YAML pipeline configuration, sensitive field redaction utility, Config Bus namespace registration (§9.4), Error Formatter Registry (§8.8), dot-namespaced event types (§9.16), Context `ContextKey[T]`, ACL condition handlers, and `Annotations.extra`.
 
 ---
 
@@ -4398,6 +4398,26 @@ MCP_ELICIT_KEY: str = "_mcp_elicit"
 | F-019 | Health Check Endpoint | FR-HEALTH-001, FR-HEALTH-002 | -- | -- |
 | F-020 | MCP Resource Exposure | FR-RESOURCE-001, FR-RESOURCE-002 | -- | -- |
 | F-026 | MCP Tool Explorer | FR-EXPLORER-001 through FR-EXPLORER-006 | -- | -- |
+| F-027 | JWT Authentication | FR-AUTH-001 through FR-AUTH-007 | NFR-SEC-001 | -- |
+| F-028 | Approval System | FR-APPROVAL-001, FR-APPROVAL-002, FR-APPROVAL-003 | -- | -- |
+| F-029 | AI Guidance Fields | (no FR — covered by tech-design only) | -- | -- |
+| F-030 | AI Intent Metadata | (no FR — covered by tech-design only) | -- | -- |
+| F-031 | Streaming Annotations | (no FR — covered by tech-design only) | -- | -- |
+| F-032 | Custom Output Formatter | (no FR — covered by tech-design only) | -- | -- |
+| F-033 | Config Bus Namespace | (no FR — covered by tech-design only) | -- | -- |
+| F-034 | Error Formatter Registry | (no FR — covered by tech-design only) | -- | -- |
+| F-035 | Dot-Namespaced Events | (no FR — covered by tech-design only) | -- | -- |
+| F-036 | Pipeline Strategy | FR-STRATEGY-001, FR-STRATEGY-002, FR-STRATEGY-003, FR-STRATEGY-004 | -- | -- |
+| F-037 | Trace Exposure | FR-TRACE-001, FR-TRACE-002, FR-TRACE-003, FR-TRACE-004 | -- | -- |
+| F-038 | Output Redaction | FR-REDACT-001, FR-REDACT-002, FR-REDACT-003 | -- | -- |
+| F-039 | Preflight Validation | FR-PREFLIGHT-001, FR-PREFLIGHT-002, FR-PREFLIGHT-003 | -- | -- |
+| F-040 | YAML Pipeline Config | FR-YAMLPIPE-001, FR-YAMLPIPE-002, FR-YAMLPIPE-003 | -- | -- |
+| F-041 | Annotation Metadata Passthrough | (no FR — covered by tech-design only) | -- | -- |
+| F-042 | Extension Bridge | FR-EXTMGR-001, FR-EXTMGR-002, FR-EXTMGR-003 | -- | -- |
+| F-043 | Async Task Bridge | FR-ASYNC-001, FR-ASYNC-002, FR-ASYNC-003, FR-ASYNC-004, FR-ASYNC-005, FR-ASYNC-006 | -- | -- |
+| F-044 | Bidirectional Cancellation | FR-CANCEL-001, FR-CANCEL-002, FR-CANCEL-003, FR-CANCEL-004 | -- | -- |
+| F-045 | Observability Auto-Wiring | (no FR — covered by tech-design only) | -- | -- |
+| F-046 | Cross-SDK Cancel Dispatcher | (no FR — covered by tech-design only; planned 0.15.0) | -- | -- |
 
 ### 9.2 FR to PRD Feature Reverse Traceability
 
@@ -4492,6 +4512,46 @@ MCP_ELICIT_KEY: str = "_mcp_elicit"
 | FR-EXPLORER-004 | F-026 |
 | FR-EXPLORER-005 | F-026 |
 | FR-EXPLORER-006 | F-026 |
+| FR-AUTH-001 | F-027 |
+| FR-AUTH-002 | F-027 |
+| FR-AUTH-003 | F-027 |
+| FR-AUTH-004 | F-027 |
+| FR-AUTH-005 | F-027 |
+| FR-AUTH-006 | F-027 |
+| FR-AUTH-007 | F-027 |
+| FR-APPROVAL-001 | F-028 |
+| FR-APPROVAL-002 | F-028 |
+| FR-APPROVAL-003 | F-028 |
+| FR-STRATEGY-001 | F-036 |
+| FR-STRATEGY-002 | F-036 |
+| FR-STRATEGY-003 | F-036 |
+| FR-STRATEGY-004 | F-036 |
+| FR-TRACE-001 | F-037 |
+| FR-TRACE-002 | F-037 |
+| FR-TRACE-003 | F-037 |
+| FR-TRACE-004 | F-037 |
+| FR-REDACT-001 | F-038 |
+| FR-REDACT-002 | F-038 |
+| FR-REDACT-003 | F-038 |
+| FR-PREFLIGHT-001 | F-039 |
+| FR-PREFLIGHT-002 | F-039 |
+| FR-PREFLIGHT-003 | F-039 |
+| FR-YAMLPIPE-001 | F-040 |
+| FR-YAMLPIPE-002 | F-040 |
+| FR-YAMLPIPE-003 | F-040 |
+| FR-EXTMGR-001 | F-042 |
+| FR-EXTMGR-002 | F-042 |
+| FR-EXTMGR-003 | F-042 |
+| FR-ASYNC-001 | F-043 |
+| FR-ASYNC-002 | F-043 |
+| FR-ASYNC-003 | F-043 |
+| FR-ASYNC-004 | F-043 |
+| FR-ASYNC-005 | F-043 |
+| FR-ASYNC-006 | F-043 |
+| FR-CANCEL-001 | F-044 |
+| FR-CANCEL-002 | F-044 |
+| FR-CANCEL-003 | F-044 |
+| FR-CANCEL-004 | F-044 |
 
 ---
 
@@ -4658,24 +4718,32 @@ User-supplied middlewares SHALL be installed on the `ExecutionRouter`/`Executor`
 
 These requirements formalize the integration between the MCP `notifications/cancelled` protocol message and apcore's cooperative `CancelToken` model. They are implemented by the Execution Router with support from the Transport Manager. Tech-design reference: **F-044**.
 
-### FR-CANCEL-001: Cancellation Token Lifecycle
+### Shipped in v0.14.0
 
-The Execution Router **MUST** allocate a fresh `CancelToken` for every inbound tool call, attach it to the `Context` via `Context.create(cancel_token=token)`, register it in a `call_id -> CancelToken` map guarded by a lock, and remove the entry in a `finally` block on completion to prevent leaks.
+#### FR-CANCEL-001: Cancellation Token Lifecycle (partial — shipped)
 
-### FR-CANCEL-002: Inbound Cancellation Handling
+The Execution Router **SHOULD** allocate a `CancelToken` for inbound tool calls and attach it to the execution `Context` where supported. As of v0.14.0, Rust ships full per-call CancelToken plumbing via `set_cancel_handler` / `notify_cancel`; Python ships transport-session level cancel forwarding via `transport_session_var` (ContextVar) wired by `serve()`/`async_serve()`. TypeScript ships `setAsyncTaskBridge` with analogous session-level wiring. *(planned 0.15.0)* The full cross-SDK per-call `Dict[call_id -> CancelToken]` map with `finally`-block release is a 0.15.0 roadmap item.
 
-The Transport Manager **MUST** forward `notifications/cancelled` (with `requestId` and optional `reason`) to `ExecutionRouter.cancel(call_id, reason)` on all transports (stdio, streamable-http, sse). The router **MUST** invoke `token.cancel()` and, when apcore >= 0.19 is available, also `executor.cancel(call_id)`. A `mcp.call.cancelled` observability event **MUST** be emitted with the reason.
+### Planned for 0.15.0
 
-### FR-CANCEL-003: Race Case Semantics
+#### FR-CANCEL-001 (full): Cancellation Token Lifecycle (planned 0.15.0)
 
-The router **MUST** handle three race cases deterministically:
+The Execution Router **SHOULD** *(planned 0.15.0)* allocate a fresh `CancelToken` for every inbound tool call, attach it to the `Context` via `Context.create(cancel_token=token)`, register it in a `call_id -> CancelToken` map guarded by a lock, and remove the entry in a `finally` block on completion to prevent leaks.
+
+#### FR-CANCEL-002: Inbound Cancellation Handling (planned 0.15.0)
+
+The Transport Manager **SHOULD** *(planned 0.15.0)* forward `notifications/cancelled` (with `requestId` and optional `reason`) to `ExecutionRouter.cancel(call_id, reason)` on all transports (stdio, streamable-http, sse). The router **SHOULD** invoke `token.cancel()` and, when apcore >= 0.19 is available, also `executor.cancel(call_id)`. A `mcp.call.cancelled` observability event **SHOULD** be emitted with the reason.
+
+#### FR-CANCEL-003: Race Case Semantics (planned 0.15.0)
+
+The router **SHOULD** *(planned 0.15.0)* handle three race cases deterministically:
 1. **Before-start** — cancel received before token registration: store a tombstone and raise `ExecutionCancelledError` immediately when the entry handler runs, without invoking the module.
 2. **After-complete** — cancel received after entry removal: no-op, logged at `debug`.
 3. **Concurrent duplicate cancels** — absorbed idempotently via the thread-safe `CancelToken.cancel()` contract.
 
-### FR-CANCEL-004: Error Mapping and Response
+#### FR-CANCEL-004: Error Mapping and Response (partially shipped)
 
-The router **MUST** catch `ExecutionCancelledError` raised in the pipeline and forward it to the Error Mapper, which **MUST** emit JSON-RPC error `-32800` ("Request cancelled") per the MCP spec with internal code `EXECUTION_CANCELLED`. The `CallToolResult` **MUST NOT** be returned for a cancelled `requestId`. The active `CancelToken` **MUST** be propagated across `asyncio.to_thread()` and nested calls via a `ContextVar`.
+The router **MUST** (already shipped in v0.14.0) catch `ExecutionCancelledError` raised in the pipeline and forward it to the Error Mapper, which **MUST** emit JSON-RPC error `-32800` ("Request cancelled") per the MCP spec with internal code `EXECUTION_CANCELLED`. The `CallToolResult` **MUST NOT** be returned for a cancelled `requestId`. *(planned 0.15.0)* The active `CancelToken` **SHOULD** be propagated across `asyncio.to_thread()` and nested calls via a `ContextVar` once the per-call CancelToken map ships.
 
 ---
 

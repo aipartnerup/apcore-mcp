@@ -2,8 +2,8 @@
 
 | Field   | Value                          |
 |---------|--------------------------------|
-| Version | 1.1                            |
-| Date    | 2026-02-25                     |
+| Version | 1.2                            |
+| Date    | 2026-04-30                     |
 | Status  | Active                         |
 | Applies | All apcore-mcp-{lang} projects |
 
@@ -163,9 +163,9 @@ Must:
 1. Load only the 2 zero-code modules
 2. Launch MCP server with the same options
 
-## 6. Explorer `/call` Response Contract
+## 6. Explorer `/call` and `/validate` Response Contract
 
-The Explorer `/call` API endpoint MUST return MCP-compliant `CallToolResult` format:
+The Explorer `/call` API endpoint MUST return MCP-compliant `CallToolResult` format. In addition, the `/validate` endpoint shipped in mcp-embedded-ui 0.4.0 (EUI-1, CHANGELOG 0.14.0) is exposed for schema-only preflight checks: POST `/tools/{name}/validate` — schema-only validation; returns `{valid: bool, errors: [...], requires_approval: bool}` without invoking the tool.
 
 ```jsonc
 // Success (HTTP 200)

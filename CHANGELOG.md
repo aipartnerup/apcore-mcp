@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.14.0] - 2026-04-23
+## [0.14.0] - 2026-05-01
 
 ### Added
 
@@ -24,13 +24,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **New optional dependency**: `apcore-toolkit >= 0.5.0` — provides `BindingLoader`/`BindingParser` and `ScannedModule.display` for consumers loading `.binding.yaml` files. Not wired by apcore-mcp itself; available transitively for downstream callers.
 - `ExecutionRouter.handle_call` response `content` item type widened from `list[dict[str, str]]` to `list[dict[str, Any]]` to carry the optional `_meta` field. Translated to MCP `TextContent.meta` on the wire.
 - `MCPServerFactory.register_handlers` gains optional `async_bridge` and `descriptor_lookup` kwargs (Python). Backward-compatible: when omitted, behavior is unchanged.
-- Updated PRD to v1.8 (43 features), SRS to v1.9, Tech Design to v1.8, Test Plan to v1.7.
-- Feature count: P0=9, P1=13, P2=21, Total=43.
+- Updated PRD to v1.8 (46 features), SRS to v2.0, Tech Design to v1.9, Test Plan to v1.8.
+- Feature count: P0=9, P1=15, P2=22, Total=46.
 
-### Known cross-language gaps (tracked, will be reconciled in 0.15.0)
+### Cross-language sync — deferred-modules round (2026-04-28)
 
-- **F-043 Async Task Bridge** — Python `ExecutionRouter` does not yet integrate the bridge; async-hinted modules fall through to the synchronous `executor.call_async` path. TypeScript dispatches via dynamic descriptor lookup; Rust dispatches via a static `async_module_ids` set frozen at router construction (stale on registry mutations). See sync report for parity plan.
-- **`ExecutionRouter.cancel(call_id, reason)`** spec'd in `docs/features/execution-router.md` is not implemented in any SDK at v0.14.0. Only Rust's `TransportManager` has transport-level cancel forwarding (routes to `AsyncTaskBridge`, not `ExecutionRouter`). Spec section is being rewritten in this release to reflect actual behavior.
+Follow-up sweep across the 10 modules deferred from the original 0.14.0 sync. Each item below is a cross-SDK divergence or contract gap closed inside this release; together they reduce the outstanding critical/high backlog from 24 to 1 (EB-1 spec drift, recommended for spec revision).
+
+- **EUI-1 — `/validate` endpoint**: `mcp-embedded-ui` minimum bumped to `0.4.0` across all three SDKs. The new `POST /tools/{name}/validate` route flows automatically through the existing `create_mount` / `createNodeHandler` adapters; schema-only validation, ungated by `allow_execute` / authenticator, never invokes the router's `handle_call`. TC-011 integration tests added in all three SDKs.
+- **TM-4 (Python) — transport-disconnect cancellation forwarding**: `TransportManager.set_async_task_bridge(bridge)` matches TS `setAsyncTaskBridge` and Rust `set_cancel_handler`. The transport scopes a per-connection session id via the new `transport_session_var` ContextVar; `factory.handle_call_tool` forwards it as `session_key` to `bridge.submit(...)`, and on transport teardown the manager calls `bridge.cancel_session_tasks(session_id)`. Wired automatically by `serve()`, `async_serve()`, and `APCoreMCP.serve` / `async_serve` when an async bridge is present. 6 regression tests added.
+- **EM-1 (Python) — `McpErrorFormatter` canonical class name** with backwards-compatible `MCPErrorFormatter` alias for cross-SDK API parity. Both names are exported from `apcore_mcp` and `apcore_mcp.adapters`.
+- **EM-3 (Python+Rust) — hardcoded `userFixable=true`** for dependency / binding / version-constraint error codes (matches TS). Affects `DEPENDENCY_NOT_FOUND`, `DEPENDENCY_VERSION_MISMATCH`, `VERSION_CONSTRAINT_INVALID`, `BINDING_SCHEMA_INFERENCE_FAILED`, `BINDING_SCHEMA_MODE_CONFLICT`, `BINDING_STRICT_SCHEMA_INCOMPATIBLE`, `BINDING_POLICY_VIOLATION`. apcore 0.19's error classes don't yet set `user_fixable=true` themselves, so the bridge stamps the hint to give MCP clients a consistent self-healing signal. 9 Python + 5 Rust regression tests added.
+- **EM-6 (Rust) — generic-error fallback**: `ErrorMapper::internal_error_response()` and `ErrorMapper::to_mcp_error_any<E: std::error::Error>()` return the `{is_error:true, error_type:"GENERAL_INTERNAL_ERROR", message:"Internal error occurred", details:null}` envelope for any non-`ModuleError` input — matches Python's `to_mcp_error(error: Exception)` and TypeScript's `toMcpError(error: unknown)`. 3 regression tests added.
+- **MID-5 — bijection-guarded denormalize across all 3 SDKs**: new variants `try_denormalize` (Python) / `tryDenormalize` (TS) / `denormalize_checked` (Rust) run the dash→dot replacement and validate the result against `MODULE_ID_PATTERN`, returning `None` / `null` / `Err(InvalidModuleId)` if the input was not produced by `normalize`. Plain `denormalize` stays lenient (backwards compatible). Useful for sanitizing OpenAI tool-call responses against the registered module set. 8 Python + 9 TS + 5 Rust regression tests added.
+- **OC-1 (TypeScript) — strict-mode walker parity with Python+Rust**: the TS strict-mode pipeline now mirrors apcore's canonical `to_strict_schema`: promotes `x-llm-description` → `description`, strips all `x-*` extension keys after promotion, recurses into `oneOf` / `anyOf` / `allOf` and `$defs` / `definitions`, sorts property names alphabetically, and removes `default` values. Output now matches Python+Rust (which delegate to apcore directly). 6 regression tests added.
+- **AH-1 (Rust) — per-request elicit callback via task-local**: added `tokio::task_local! ELICIT_CALLBACK` in `apcore_mcp::helpers`. `ElicitationApprovalHandler::request_approval` now resolves the callback from the task-local first (matching Python+TS, which read it from `context.data`), with the constructor field as a fallback. apcore-rust's `Context::data` cannot hold boxed `Fn`s, so a task-local is the closest cross-SDK equivalent without changing apcore. 4 regression tests added.
+- **EB-2 (Python + TypeScript) — adapter-hook kwargs in `serve()` / `async_serve()`**: pass `schema_converter`, `annotation_mapper`, and `error_mapper` to override the factory's built-in adapters. Useful for extensions that customize JSON-Schema strictness, the annotation wire format, or error formatting. Rust deferred to a future release because its adapters are stateless unit structs and require a trait-based redesign first.
+- **JWT-2 (Python) — case-insensitive `Authorization` header lookup.** `JWTAuthenticator.authenticate` now tries both `headers["authorization"]` and `headers["Authorization"]`. ASGI lower-cases header names but direct callers (tests, hooks, manual invocations) may pass the capitalised form; RFC 7230 §3.2 mandates case-insensitive header names. Matches TS+Rust behaviour. 1 regression test.
+- **AM-L1 — F-041 annotation extras format unification across all 3 SDKs.** `mcp_*` extras now appear after the `[Annotations: ...]` block as `<stripped-key>: <value>` lines separated by single newlines (matches the wire format that TypeScript was already emitting). Pre-fix Python emitted each extra as its own section separated by `\n\n`; pre-fix Rust inlined them into the `[Annotations: ...]` block as `mcp_key=value`. 1 regression test in each SDK.
+
+#### Breaking changes (cross-SDK API unification)
+
+- **JWT-1 — `Authenticator.authenticate` signature unified.** All three SDKs now use `authenticate(headers: HeaderMap) -> Awaitable<Identity | null>`.
+  - **Python**: `authenticate` is now `async`. Existing sync implementations continue to work via the new `apcore_mcp.auth.protocol.call_authenticator(auth, headers)` helper, which inspects the return value and awaits if it's a coroutine. Tests for `JWTAuthenticator` are now `async def`.
+  - **TypeScript**: `Authenticator.authenticate` now takes `Record<string, string>` instead of `IncomingMessage`. Use the new `extractHeaders(req)` helper (re-exported from the package root) to flatten a Node `IncomingMessage` before calling.
+  - **Rust**: no change (already aligned).
+- **OC-5 — Rust `convert_registry` signature.** The canonical Rust entrypoint now takes `&apcore::registry::Registry` directly (matching Python+TS duck-typed Registry input). The pre-fix `&Value`-snapshot variant is preserved as `convert_registry_json` for callers that hold a serialized snapshot.
+
+#### Migration
+
+This release contains several behaviour-changing fixes. None of the runtime changes are silent — each is observable via type errors or test failures during upgrade.
+
+##### Python
+
+- **`Authenticator.authenticate` is now `async`.** Existing sync implementations continue to work via the bridge:
+  ```python
+  # Before (sync):
+  class MyAuth:
+      def authenticate(self, headers: dict[str, str]) -> Identity | None: ...
+
+  # After (async — preferred):
+  class MyAuth:
+      async def authenticate(self, headers: dict[str, str]) -> Identity | None: ...
+
+  # Or keep sync — middleware uses `call_authenticator(auth, headers)` which
+  # awaits coroutines and falls through for sync returns.
+  ```
+  Tests calling `authenticator.authenticate(...)` directly must be `async def` and `await` the call.
+- **`AnnotationMapper.to_mcp_annotations` returns camelCase keys** (`readOnlyHint`, `destructiveHint`, …). Previously snake_case (`read_only_hint`). Anyone consuming the dict directly must rename keys.
+- **`MCPErrorFormatter` ↔ `McpErrorFormatter`** — the new PascalCase form is preferred (matches TS+Rust). Both names are exported.
+- **`JWTAuthenticator` clock-skew leeway** is now 30 s (was 0 s). Tokens that were silently rejected ±30 s of expiry/nbf will now validate. If you tested with `exp = now() - 10 s`, expand to `- 60 s` so the token stays expired.
+
+##### TypeScript
+
+- **`Authenticator.authenticate` takes `Record<string, string>` instead of `IncomingMessage`.** Use the new helper to bridge:
+  ```ts
+  // Before:
+  authenticator.authenticate(req);
+
+  // After:
+  import { extractHeaders } from "apcore-mcp";
+  authenticator.authenticate(extractHeaders(req));
+  ```
+- **OpenAI strict mode default is `true`** (was `undefined → false`). Existing callers that relied on permissive output must opt out explicitly: `convertRegistry(registry, { strict: false })`.
+- **Schema-converter `_inlineRefs` recursion is capped at 32**. Pathological deeply-recursive schemas now throw instead of stack-overflowing.
+- **401 body is unified to `{error: "Unauthorized", detail: "..."}`.** Pre-fix TS returned `{error: "Authentication required"}`.
+
+##### Rust
+
+- **`OpenAIConverter::convert_registry` now takes `&apcore::registry::Registry`** (was `&serde_json::Value`). Callers that hold a serialized snapshot should switch to `convert_registry_json`:
+  ```rust
+  // Live registry path (preferred, matches Python+TS):
+  converter.convert_registry(&registry, false, false, None, None)?;
+
+  // Or keep using a JSON snapshot:
+  converter.convert_registry_json(&value, false, false, None, None)?;
+  ```
+- **`register_mcp_formatter`** is the canonical function name (was briefly `register_mcp_error_formatter` during 0.14 dev). The release ships only the unified name.
+- **Strict-schema walker preserves `type: ["object", "null"]`** (no longer downgrades to bare `"object"`) and stops descending into `enum` / `const` / `examples` / `default`. Schemas that exploited the over-aggressive descent will see less inserted `additionalProperties: false`.
+
+#### Deferred to a future release
+
+- **A-D-012 (Rust) — canonical strict-schema sourcing via `Registry::export_schema_strict`**: requires a future apcore release (currently committed locally as `62706be` but not yet on crates.io). 0.14.0 ships with the local-`SchemaConverter` fallback as the canonical path; behaviour is identical, the upgrade is purely about delegating to apcore upstream.
+- **EB-1 — `ExtensionManager.apply()`**: spec drift, not a cross-SDK divergence — recommended for spec revision since none of the three SDKs need the `apply()` step (extensions load via Config Bus / kwargs).
+- **EB-2 (Rust) — adapter-hook injection**: blocked on stateless unit structs; needs adapter trait redesign.
+- **TM-1/2/3 (Python TransportManager setter API parity)**: cosmetic, the underlying functionality (auth, explorer, /usage) already works through the wrapper layer.
 
 ---
 

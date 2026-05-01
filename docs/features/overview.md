@@ -1,25 +1,25 @@
 # Feature Overview
 
 > Auto-generated index of feature specs for apcore-mcp.
-> Updated: 2026-04-15
+> Updated: 2026-04-30
 
 ## Features
 
 | Feature | Description | Dependencies | Status |
 |---------|-------------|--------------|--------|
-| [Schema Converter](./schema-converter.md) | Resolves JSON Schema references for MCP/OpenAI. | none | draft |
-| [Annotation Mapper](./annotation-mapper.md) | Maps apcore metadata to protocol behavioral hints. | none | draft |
-| [Execution Router](./execution-router.md) | Dispatches tool calls to the apcore Executor pipeline. | error-mapper | draft |
-| [Error Mapper](./error-mapper.md) | Translates exceptions to protocol-compliant errors. | none | draft |
-| [MCP Server Factory](./mcp-server-factory.md) | Builds the low-level MCP server instance. | schema-converter, annotation-mapper, execution-router | draft |
-| [OpenAI Converter](./openai-converter.md) | Exports modules as OpenAI-compatible tool definitions. | schema-converter, annotation-mapper | draft |
-| [Extension Bridge](./extension-bridge.md) | Wires apcore ExtensionManager into the MCP server pipeline. | mcp-server-factory, execution-router | draft |
-| [Transport Manager](./transport-manager.md) | Manages stdio and network communication layers. | mcp-server-factory | draft |
-| [Registry Listener](./registry-listener.md) | Enables hot-reloading of tools on registry changes. | mcp-server-factory | draft |
-| [JWT Authenticator](./jwt-authenticator.md) | Secures HTTP transports using bearer tokens. | none | draft |
-| [Approval Handler](./approval-handler.md) | Implements human-in-the-loop confirmation via MCP. | execution-router | draft |
-| [Async Task Bridge](./async-task-bridge.md) | Routes async-hinted modules to apcore's AsyncTaskManager and exposes task meta-tools. | execution-router, error-mapper | draft |
-| [Explorer UI](./explorer-ui.md) | Web dashboard for inspecting and testing tools. | mcp-server-factory, execution-router | draft |
+| [Schema Converter](./schema-converter.md) | Resolves JSON Schema references for MCP/OpenAI. | none | released-v0.14.0 |
+| [Annotation Mapper](./annotation-mapper.md) | Maps apcore metadata to protocol behavioral hints. | none | released-v0.14.0 |
+| [Execution Router](./execution-router.md) | Dispatches tool calls to the apcore Executor pipeline. | error-mapper | released-v0.14.0 |
+| [Error Mapper](./error-mapper.md) | Translates exceptions to protocol-compliant errors. | none | released-v0.14.0 |
+| [MCP Server Factory](./mcp-server-factory.md) | Builds the low-level MCP server instance. | schema-converter, annotation-mapper, execution-router | released-v0.14.0 |
+| [OpenAI Converter](./openai-converter.md) | Exports modules as OpenAI-compatible tool definitions. | schema-converter, annotation-mapper | released-v0.14.0 |
+| [Extension Bridge](./extension-bridge.md) | Wires apcore ExtensionManager into the MCP server pipeline. | mcp-server-factory, execution-router | released-v0.14.0 (`apply()` portion deferred — EB-1) |
+| [Transport Manager](./transport-manager.md) | Manages stdio and network communication layers. | mcp-server-factory | released-v0.14.0 |
+| [Registry Listener](./registry-listener.md) | Enables hot-reloading of tools on registry changes. | mcp-server-factory | released-v0.14.0 |
+| [JWT Authenticator](./jwt-authenticator.md) | Secures HTTP transports using bearer tokens. | none | released-v0.14.0 |
+| [Approval Handler](./approval-handler.md) | Implements human-in-the-loop confirmation via MCP. | execution-router | released-v0.14.0 |
+| [Async Task Bridge](./async-task-bridge.md) | Routes async-hinted modules to apcore's AsyncTaskManager and exposes task meta-tools. | execution-router, error-mapper | released-v0.14.0 |
+| [Explorer UI](./explorer-ui.md) | Web dashboard for inspecting and testing tools. | mcp-server-factory, execution-router | released-v0.14.0 |
 
 ## Execution Order
 
