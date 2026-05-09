@@ -92,7 +92,7 @@ The manager installs signal handlers that trigger an internal shutdown event. Th
 
 ---
 
-## Contract: TransportManager.start_stdio
+## Contract: TransportManager.run_stdio
 
 ### Inputs
 - server: Server, required — configured MCP Server instance from MCPServerFactory
@@ -104,7 +104,8 @@ The manager installs signal handlers that trigger an internal shutdown event. Th
 
 ### Returns
 - On success: None — blocks until the stdio connection closes (parent process terminates or closes pipe); in-flight calls are abandoned on close (no cooperative drain)
-- Python-only transport (TypeScript uses its own stdio runner; Rust uses its own)
+- Per-language method names: Python `run_stdio`, TypeScript `runStdio`, Rust `run_stdio`. All three SDKs implement this transport.
+- Graceful teardown is signal-driven: the method installs SIGINT/SIGTERM handlers internally and returns when a shutdown signal fires or the stdio pipe closes. There is no separate `shutdown()` method — teardown is owned by this `run_*` call's signal-handling lifecycle.
 
 ### Properties
 - async: true
@@ -115,7 +116,7 @@ The manager installs signal handlers that trigger an internal shutdown event. Th
 
 ---
 
-## Contract: TransportManager.start_http
+## Contract: TransportManager.run_streamable_http
 
 ### Inputs
 - server: Server, required — configured MCP Server instance
@@ -131,7 +132,10 @@ The manager installs signal handlers that trigger an internal shutdown event. Th
 - Transport-level errors (malformed HTTP headers) are caught and logged without crashing
 
 ### Returns
-- On success: None — blocks until SIGINT or SIGTERM; shared (Python + TypeScript); Rust uses its own HTTP transport implementation
+- On success: None — blocks until SIGINT or SIGTERM; available in all three SDKs (Python, TypeScript, Rust).
+- Per-language method names: Python `run_streamable_http`, TypeScript `runStreamableHttp`, Rust `run_streamable_http`.
+- A companion async-context-manager builder is also exposed for embedding inside an existing ASGI app: Python `build_streamable_http_app(server, init_options, extra_routes, middleware)`, TypeScript `buildStreamableHttpApp(...)`, Rust `build_streamable_http_app(...)`. The builder yields the ASGI/Router app without binding a port; the caller hosts it in their own runtime.
+- Graceful teardown is signal-driven: SIGINT/SIGTERM handlers installed inside this method initiate the orderly shutdown path. There is no separate `shutdown()` method.
 
 ### Properties
 - async: true
@@ -142,22 +146,33 @@ The manager installs signal handlers that trigger an internal shutdown event. Th
 
 ---
 
-## Contract: TransportManager.shutdown
+## Contract: TransportManager.run_sse
 
 ### Inputs
-- No parameters
+- server: Server, required — configured MCP Server instance
+- init_options: InitializationOptions, required
+- host: str, optional, default="127.0.0.1" — bind address; must be non-empty
+- port: int, optional, default=8000, validates[1–65535], reject_with=ValueError
+- extra_routes: list[Route|Mount] | None, optional — additional Starlette routes
+- middleware: list[tuple[type, dict]] | None, optional — ASGI middleware stack
 
 ### Errors
-- No exceptions raised; shutdown is best-effort
+- ValueError — when host is empty or port is outside 1–65535
+- OSError — when port is already in use (Address already in use)
+- Transport-level errors are caught and logged without crashing
 
 ### Returns
-- On success: None — triggers graceful shutdown of active transport; closes connections; installs SIGINT/SIGTERM handlers that fire this path
+- On success: None — blocks until SIGINT or SIGTERM; available in all three SDKs.
+- Per-language method names: Python `run_sse`, TypeScript `runSse`, Rust `run_sse`.
+- A companion async-context-manager builder is also exposed: Python `build_sse_app(server, init_options, extra_routes, middleware)`, TypeScript `buildSseApp(...)`, Rust `build_sse_app(...)`.
+- **Status:** Deprecated since 0.13.0 in favor of `run_streamable_http` but still supported for backward compatibility with legacy MCP clients. Will be removed in a future major release; new integrations SHOULD use `run_streamable_http`.
+- Graceful teardown is signal-driven: SIGINT/SIGTERM handlers installed inside this method initiate the orderly shutdown path. There is no separate `shutdown()` method.
 
 ### Properties
 - async: true
 - thread_safe: true
 - pure: false
-- idempotent: true
+- idempotent: false
 - handles_sigterm: true
 
 ---

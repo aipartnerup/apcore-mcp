@@ -112,7 +112,9 @@ All four fields are optional: when absent or `None` on the descriptor, the mappe
 
 ---
 
-## Contract: AnnotationMapper.map_to_mcp
+## Contract: AnnotationMapper.to_mcp_annotations
+
+> **Naming note:** TypeScript exposes this as `toMcpAnnotations` per language convention; Python/Rust use `to_mcp_annotations`. Rust exposes it as a static/associated function (`AnnotationMapper::to_mcp_annotations(...)`).
 
 ### Inputs
 - annotations: ModuleAnnotations | None, optional, validates[duck-typed attributes], reject_with=None (returns protocol defaults on None)
@@ -121,7 +123,7 @@ All four fields are optional: when absent or `None` on the descriptor, the mappe
 - No exceptions raised; None input maps to safe defaults
 
 ### Returns
-- On success: dict[str, Any] with camelCase keys — `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`, `title`; defaults are `false/false/false/true/null` when annotations is None
+- On success: a dict / object whose keys are MCP-protocol **camelCase** identifiers — `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`, `title`. The shape is `dict[str, Any]` in Python, an `McpAnnotationsDict` object in TypeScript, and a `HashMap<&'static str, serde_json::Value>` (or equivalent struct serialized to camelCase JSON) in Rust. Defaults when `annotations` is None: `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=false`, `openWorldHint=true`, `title=null` (omitted in TS/Rust serializations when null).
 - On failure: returns default dict (never raises)
 
 ### Properties
@@ -132,7 +134,9 @@ All four fields are optional: when absent or `None` on the descriptor, the mappe
 
 ---
 
-## Contract: AnnotationMapper.requires_approval
+## Contract: AnnotationMapper.has_requires_approval
+
+> **Naming note:** TypeScript exposes this as `hasRequiresApproval` per language convention; Python/Rust use `has_requires_approval`.
 
 ### Inputs
 - annotations: ModuleAnnotations | None, optional, validates[has `requires_approval` attribute], reject_with=None (returns False on None)

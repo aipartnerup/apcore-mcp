@@ -198,17 +198,22 @@ The `EXECUTION_CANCELLED` error code is already reserved in all three SDKs for t
 
 ---
 
-## Contract: ExecutionRouter.from_executor
+## Contract: ExecutionRouter constructor
+
+Per-language idiom — there is **no** `from_executor` factory; the router is constructed directly:
+- Python: `ExecutionRouter.__init__(executor, *, validate_inputs=False, output_formatter=None, redact_output=True, output_schema_map=None, trace=False, async_bridge=None, descriptor_lookup=None)` — invoked as `ExecutionRouter(executor, ...)`.
+- TypeScript: `new ExecutionRouter(executor: Executor, options?: ExecutionRouterOptions)` where `options` carries `{ validateInputs?, outputFormatter?, redactOutput?, trace?, outputSchemaMap?, asyncTaskBridge?, descriptorLookup? }` (camelCase).
+- Rust: `ExecutionRouter::new(executor: Box<dyn Executor>, validate_inputs: bool, output_formatter: Option<OutputFormatter>) -> Self`, with optional builder-style configuration via `with_tool_schemas(...)`, `with_output_schemas(...)`, `with_redact_output(bool)`, `with_trace(bool)`, and `with_async_bridge(Arc<AsyncTaskBridge>)`. A no-arg `ExecutionRouter::stub() -> Self` is also provided for tests, plus a `new_with_formatter(executor, validate_inputs, output_formatter)` convenience.
 
 ### Inputs
-- executor: Any, required (duck-typed) — must expose async `call_async(module_id, inputs, context?)` method
-- validate_inputs: bool, optional, default=False
-- output_formatter: callable | None, optional
-- redact_output: bool, optional, default=True
-- output_schema_map: dict | None, optional
-- trace: bool, optional, default=False
-- async_bridge: AsyncTaskBridge | None, optional
-- descriptor_lookup: callable | None, optional
+- executor: Any, required (duck-typed in Python/TS; `Box<dyn Executor>` in Rust) — must expose async `call_async(module_id, inputs, context?)` method (Python/TS) or implement the `Executor` trait (Rust)
+- validate_inputs / validateInputs: bool, optional, default=false
+- output_formatter / outputFormatter: callable | None, optional
+- redact_output / redactOutput: bool, optional, default=true (Python/TS); Rust toggles via `with_redact_output(true)` (default false)
+- output_schema_map / outputSchemaMap: dict | None, optional (Rust uses `with_output_schemas(...)`)
+- trace: bool, optional, default=false
+- async_bridge / asyncTaskBridge: AsyncTaskBridge | None, optional (Rust accepts `Arc<AsyncTaskBridge>` via `with_async_bridge(...)`)
+- descriptor_lookup / descriptorLookup: callable | None, optional (Python/TS only; Rust resolves descriptors via `with_tool_schemas`)
 
 ### Errors
 - No constructor errors (fail-late at call time)

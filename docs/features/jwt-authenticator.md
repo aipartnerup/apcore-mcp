@@ -28,7 +28,7 @@ The JWT Authenticator provides a pluggable security layer for HTTP-based MCP tra
 1. **Token Validator** — Decodes and verifies the signature, expiration (`exp`), audience (`aud`), and issuer (`iss`) of incoming JWTs.
 2. **Identity Mapper** — Translates JWT claims into the structured `Identity` object (id, type, roles, attributes) used by apcore's ACL system.
 3. **Request Guard** — Intercepts all incoming HTTP/SSE requests and returns `401 Unauthorized` if a valid token is missing (when required).
-4. **Context Bridge** — Uses context-local storage to securely pass the authenticated identity from the HTTP middleware to the tool execution handler — Python: `ContextVar`; TypeScript: `AsyncLocalStorage`; Rust: `tokio::task_local!`. Note that `authenticate()` is async in the TypeScript and Rust SDKs. Python remains synchronous (`def authenticate`, not `async def`) — the Contract block reflects the canonical Python behavior (`async: false`).
+4. **Context Bridge** — Uses context-local storage to securely pass the authenticated identity from the HTTP middleware to the tool execution handler — Python: `ContextVar`; TypeScript: `AsyncLocalStorage`; Rust: `tokio::task_local!`. Following the JWT-1 unification in apcore-mcp 0.14.0, `authenticate()` is **async in all three SDKs** (Python `async def authenticate`, TypeScript `authenticate(...): Promise<Identity | null>`, Rust `async fn authenticate(...)` under `#[async_trait]`). Python additionally provides a `call_authenticator(auth, headers)` helper that bridges any legacy synchronous `Authenticator` implementations transparently — it inspects the return value and `await`s it only if a coroutine is detected, allowing legacy sync authenticators to coexist with the new async contract during migration.
 
 ## Interfaces
 
@@ -134,7 +134,7 @@ Authentication is automatically bypassed when using the `stdio` transport, as th
 - `require_auth` policy (whether None triggers 401) is owned by AuthMiddleware, NOT by this class
 
 ### Properties
-- async: false
+- async: true (uniform across all 3 SDKs since JWT-1 unification in 0.14.0 — Python `async def authenticate`, TypeScript `Promise<Identity | null>`, Rust `async fn` under `#[async_trait]`)
 - thread_safe: true
 - pure: false
 - idempotent: true
