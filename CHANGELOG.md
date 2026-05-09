@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-05-09
+
+Cross-SDK release leveraging **apcore 0.21.0 + apcore-toolkit 0.6.0**.
+Promotes three new upstream capabilities into MCP-facing surface area
+across all three SDKs (`apcore-mcp-python`, `apcore-mcp-rust`,
+`apcore-mcp-typescript`). Byte-equivalent meta-tool, error envelope,
+and Markdown rendering across languages.
+
+### Changed
+
+- **Dependency bumps**: `apcore >= 0.21.0` (Python/Rust), `apcore-js >= 0.21.1` (TS), `apcore-toolkit >= 0.6.0` (Python/Rust) / `>= 0.6.1` (TS).
+- **Rust BREAKING**: `AsyncTaskBridge::{submit, cancel, cancel_session_tasks, handle_meta_tool, shutdown}` are now `async fn` — propagates upstream apcore 0.20+ async signatures (D10-003 / D10-004). Sync transport-layer cancel handlers now `tokio::spawn` the cancel call as fire-and-forget.
+
+### Added
+
+- **`__apcore_module_preview` meta-tool (PROTOCOL_SPEC §5.6 / §12.8)** — fifth reserved meta-tool alongside the four `__apcore_task_*` ones. Drives `executor.validate(module_id, inputs, context)` and returns a structured `{valid, requires_approval, predicted_changes, checks}` envelope WITHOUT executing the module. Lets AI orchestrators answer *"what would change in the world if I called this?"* before invoking destructive or stateful modules. `arguments: null` and missing `arguments` are preserved verbatim — the calling business decides whether null is a valid input. Structurally-impossible shapes (arrays, scalars) return a typed validation error. Cross-SDK wire-equivalent across Python, Rust, and TypeScript.
+- **`rich_description` / `richDescription` option** on `MCPServerFactory` (Python, Rust, TS) and `OpenAIConverter` (Python, Rust, TS) — renders `Tool.description` / OpenAI `function.description` as canonical apcore-toolkit Markdown (`format_module(style="markdown")`) instead of the plain one-line description. Includes title, description, parameters list, returns list, behavior table (only fields differing from defaults — toolkit 0.6 alignment), tags, and examples. **LLMs select tools primarily from this string; Markdown packs more decision-relevant signal per token.** Display-overlay `mcp.description` overrides still win first. Falls back to the plain description with a one-shot WARN log when `apcore-toolkit` is unavailable (Python optional `[markdown]` extra; TS optional peer dep; Rust mandatory).
+- **`markdown` module** in all 3 SDKs — public helpers for descriptor → ScannedModule adapter and direct Markdown rendering. TS adds a `primeMarkdownToolkit()` async loader so synchronous code paths can render after startup priming.
+- **`CIRCUIT_BREAKER_OPEN` error mapping** (apcore 0.20 sync alignment A-001) — `ErrorMapper` now dispatches `CircuitBreakerOpenError` (Python) / `ApcoreErrorCode::CircuitBreakerOpen` (Rust) / `ErrorCodes.CIRCUIT_BREAKER_OPEN` (TS) to a `retryable: true` envelope with `aiGuidance` mirrored from the apcore error class. Added to constants tables in all 3 SDKs.
+- **Rust-specific**: new `ConvertOptions` struct + `OpenAIConverter::*_with_options` method family (backwards-compatible additive API); `markdown` module re-exported from `lib.rs`; new public `json_entry_to_scanned_module(module_id, &Value) -> ScannedModule` adapter that lets the duck-typed JSON registry path drive the same Markdown rendering as the `&Registry` path.
+
+### Fixed
+
+- **Rust `ApprovalResult` / `ApprovalRequest`** — adapted to apcore 0.21's `#[non_exhaustive]` annotations via the `let mut x = X::default(); x.field = ...; x` construction pattern.
+- **Rust binding-error match** — removed deleted `ApcoreErrorCode::BindingPolicyViolation` variant (apcore 0.21 dropped it; the wire string remains supported via the constants table for backward-compat with legacy emitters).
+- **Cross-SDK `arguments: null` preservation** — preview handler now forwards null/missing `arguments` verbatim to `executor.validate()` instead of silently coercing to `{}`. Lets the calling business decide whether null is a valid module input.
+
+### Tests
+
+- Python: **771 passed** (was 758, +13 net)
+- Rust: **843 passed** (was 828, +15 net)
+- TypeScript: **549 passed** (was 534, +15 net)
+
 ## [0.14.0] - 2026-05-01
 
 ### Added

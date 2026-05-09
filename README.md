@@ -40,21 +40,21 @@
     ```bash
     pip install apcore-mcp
     ```
-    *Requires Python 3.11+ and apcore 0.19.0+.*
+    *Requires Python 3.11+ and apcore 0.21.0+ (optional `[markdown]` extra: apcore-toolkit 0.6.0+).*
 
 === "📘 TypeScript"
 
     ```bash
     npm install apcore-mcp
     ```
-    *Requires Node.js 18+ and apcore-js >=0.19.0.*
+    *Requires Node.js 18+ and apcore-js >=0.21.1 (optional peer: apcore-toolkit >=0.6.1).*
 
 === "🦀 Rust"
 
     ```bash
     cargo add apcore-mcp
     ```
-    *Requires Rust 1.75+ and apcore = "0.19.0".*
+    *Requires Rust 1.75+ and apcore = "0.21.0", apcore-toolkit = "0.6.0".*
 
 ---
 
@@ -208,9 +208,9 @@ The project is architected as a set of modular features, each with its own speci
 
 | Language | Repository | Package | Status |
 |----------|-----------|---------|--------|
-| Python | [apcore-mcp-python](https://github.com/aiperceivable/apcore-mcp-python) | `pip install apcore-mcp` | ✅ v0.14.0 |
-| TypeScript | [apcore-mcp-typescript](https://github.com/aiperceivable/apcore-mcp-typescript) | `npm install apcore-mcp` | ✅ v0.14.0 |
-| Rust | [apcore-mcp-rust](https://github.com/aiperceivable/apcore-mcp-rust) | `cargo add apcore-mcp` | ✅ v0.14.0 |
+| Python | [apcore-mcp-python](https://github.com/aiperceivable/apcore-mcp-python) | `pip install apcore-mcp` | ✅ v0.15.0 |
+| TypeScript | [apcore-mcp-typescript](https://github.com/aiperceivable/apcore-mcp-typescript) | `npm install apcore-mcp` | ✅ v0.15.0 |
+| Rust | [apcore-mcp-rust](https://github.com/aiperceivable/apcore-mcp-rust) | `cargo add apcore-mcp` | ✅ v0.15.0 |
 | Go | apcore-mcp-go | — | Planned |
 
 ## License
