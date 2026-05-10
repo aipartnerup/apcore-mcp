@@ -98,9 +98,10 @@ Only errors derived from `ModuleError` (which are designed to be user-facing) ar
 - All SDKs return camelCase keys directly — Python uses isError/errorType with no intermediate snake_case conversion
 - Additional optional fields: `retryable: bool`, `aiGuidance: str`, `userFixable: bool`, `suggestion: str` — populated from error attributes when present
 - `userFixable: true` — TypeScript only (hardcoded at errors.ts:241,273). Python: userFixable is attached only when error.user_fixable is truthy (via _attach_ai_guidance); DependencyNotFoundError does not set user_fixable by default, so Python responses for these codes will NOT include userFixable:true unless apcore sets it explicitly
-- Non-ModuleError exceptions → `errorType: "INTERNAL_ERROR"`, `message: "Internal error occurred"`, `details: null`
+- Non-ModuleError exceptions → `errorType: "GENERAL_INTERNAL_ERROR"`, `message: "Internal error occurred"`, `details: null` (matches `internal_error_response()`; see EM-6 below)
 - ExecutionCancelledError → `errorType: "EXECUTION_CANCELLED"`, `retryable: true`
-- On failure: returns hardcoded INTERNAL_ERROR dict (never raises)
+- CircuitBreakerOpenError → `errorType: "CIRCUIT_BREAKER_OPEN"`, `retryable: true`, `aiGuidance: "Upstream circuit is open; retry after backoff."` (added in 0.15.0; dispatched via the `CIRCUIT_BREAKER_OPEN` code constant)
+- On failure: returns hardcoded GENERAL_INTERNAL_ERROR dict (never raises)
 
 ### Properties
 - async: false
@@ -179,3 +180,29 @@ EM-6 generic-error fallback for arbitrary error inputs. Python signature `to_mcp
 - thread_safe: true
 - pure: true
 - idempotent: true
+
+---
+
+## Contract: CIRCUIT_BREAKER_OPEN error-code constant
+
+> Public error-code constant introduced in 0.15.0. Exposed alongside the existing apcore error codes so SDK callers can branch on `error.errorType === "CIRCUIT_BREAKER_OPEN"` portably across all three languages. Names per language: Python `ERROR_CODES["CIRCUIT_BREAKER_OPEN"]`, TypeScript `ErrorCodes.CIRCUIT_BREAKER_OPEN`, Rust `ApcoreErrorCode::CircuitBreakerOpen` (serializes to the literal string `"CIRCUIT_BREAKER_OPEN"` for wire output).
+
+### Inputs
+- (none — constant)
+
+### Errors
+- (none)
+
+### Returns
+- Python: `str` literal `"CIRCUIT_BREAKER_OPEN"`
+- TypeScript: `const` literal `"CIRCUIT_BREAKER_OPEN"` (typed as `ErrorCodes.CIRCUIT_BREAKER_OPEN`)
+- Rust: enum variant `ApcoreErrorCode::CircuitBreakerOpen`; `Display` / serde implementation MUST emit the exact wire string `"CIRCUIT_BREAKER_OPEN"`
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: true
+- idempotent: true
+
+### Wire format
+The `errorType` field of an `to_mcp_error` envelope dispatched from a `CircuitBreakerOpenError` MUST equal this literal string. MCP clients branch on `response.errorType === "CIRCUIT_BREAKER_OPEN"` to apply backoff-and-retry logic before falling through to generic retryable handling.

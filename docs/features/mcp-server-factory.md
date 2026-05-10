@@ -292,3 +292,56 @@ The three Contract blocks below define each step. For HTTP transport, `build_ini
 - thread_safe: false
 - pure: false
 - idempotent: false
+
+---
+
+## Contract: MCPServerFactory rich_description option
+
+> Constructor option introduced in 0.15.0. When enabled, tool descriptions are rendered through the apcore-toolkit Markdown formatter so MCP clients receive a structured, human-readable description instead of the raw `descriptor.description` string. Names per language: Python `rich_description: bool`, TypeScript `richDescription: boolean`, Rust `with_rich_description(bool)` builder method.
+
+### Inputs
+- rich_description: bool, optional, default=False — when True, every tool's `description` field is replaced by `render_module_markdown(descriptor)` output; `display_overlay` (when present) takes precedence over the rendered Markdown for caller-supplied final overrides
+- toolkit availability: when `rich_description=True` AND apcore-toolkit is not installed, the factory falls back silently to `descriptor.description` and emits a one-time WARNING log line per process
+
+### Errors
+- No errors raised — fallback-on-missing-toolkit is by design
+
+### Returns
+- On success: side effect on each tool produced by `build_tools`/`build_tool` — the tool's `description` field is rendered Markdown when `rich_description=True` AND toolkit is available; otherwise unchanged
+
+### Properties
+- async: false
+- thread_safe: true (read-only after construction)
+- pure: false (depends on toolkit availability)
+- idempotent: true
+
+### Display Precedence
+1. `descriptor.annotations.extra["display_overlay"]` (caller's final override) — used as-is when present
+2. Rendered Markdown from `render_module_markdown(descriptor)` — used when `rich_description=True` AND toolkit available
+3. `descriptor.description` (raw) — used when `rich_description=False` OR toolkit unavailable
+
+---
+
+## Contract: MCPServerFactory.prepare
+
+> Static method introduced in 0.15.0 (TypeScript only — Python/Rust have synchronous toolkit loading and do not require this). Primes the apcore-toolkit Markdown renderer's module cache so downstream `buildTool` calls can render Markdown synchronously.
+
+### Inputs
+- (no parameters)
+
+### Errors
+- No errors raised — silently no-ops when apcore-toolkit is not installed (logs at DEBUG)
+- Toolkit import errors are caught and logged at WARNING; subsequent `buildTool` calls fall back to raw description
+
+### Returns
+- On success: Promise<void> — resolves once the dynamic `import("apcore-toolkit/markdown")` has completed and the markdown module is cached
+- On failure: never rejects (silently swallows toolkit-load errors per fallback policy)
+
+### Properties
+- async: true
+- thread_safe: true (idempotent prime; concurrent calls share the same in-flight Promise)
+- pure: false (mutates a module-level cache)
+- idempotent: true (multiple calls share cached state)
+
+### Usage
+Call `await MCPServerFactory.prepare()` once at application startup BEFORE any synchronous `buildTool` invocations when `richDescription: true` is in effect; without this prime, the first `buildTool` call falls back to raw description because the renderer module has not yet loaded.

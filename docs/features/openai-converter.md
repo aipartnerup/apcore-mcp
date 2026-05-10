@@ -166,3 +166,106 @@ The converter must return only standard Python types (dict, list, str, etc.) and
 - thread_safe: true
 - pure: false
 - idempotent: true
+
+---
+
+## Contract: OpenAIConverter rich_description option
+
+> Parameter introduced in 0.15.0 on `convert_registry` / `convertRegistry` / `convert_registry_with_options` and on the per-module `convert_descriptor` / `convertDescriptor` paths. When enabled, the tool's `description` field is rendered through the apcore-toolkit Markdown formatter so OpenAI receives a structured description instead of `descriptor.description`. Mirrors the `MCPServerFactory rich_description` option for parity across the MCP and OpenAI surfaces.
+
+### Inputs
+- rich_description: bool, optional, default=False (Python: `rich_description`; TypeScript: `richDescription`; Rust: field on `ConvertOptions`) — when True, replaces the OpenAI tool's `description` with `render_module_markdown(descriptor)` output
+- toolkit availability: when `rich_description=True` AND apcore-toolkit is not installed, the converter falls back silently to `descriptor.description` and emits a one-time WARNING log line per process
+
+### Errors
+- No errors raised — fallback-on-missing-toolkit is by design
+
+### Returns
+- On success: side effect on the per-tool `description` field — rendered Markdown when `rich_description=True` AND toolkit available; otherwise unchanged
+- On rendered-description + `embed_annotations=True`: the annotation suffix is appended AFTER the rendered Markdown (separated by a blank line) so suffix semantics are preserved
+
+### Properties
+- async: false
+- thread_safe: true (read-only after construction)
+- pure: false (depends on toolkit availability)
+- idempotent: true
+
+---
+
+## Contract: ConvertOptions (Rust)
+
+> Public struct introduced in 0.15.0. Aggregates all per-call conversion options for the `*_with_options` method family on the Rust `OpenAIConverter`. Mirrors the TypeScript `ConvertOptions` interface and the Python kwargs surface, providing a single ergonomic carrier for callers that want non-default behavior.
+
+### Inputs (struct fields)
+- strict: bool, required — apply OpenAI strict-mode schema transformations
+- embed_annotations: bool, optional, default=false — append annotation suffix to descriptions
+- rich_description: bool, optional, default=false — render Markdown via apcore-toolkit when available
+- tags: Option<Vec<String>>, optional — filter modules by tags (forwarded to `registry.list`)
+- prefix: Option<String>, optional — filter modules by ID prefix (forwarded to `registry.list`)
+
+### Errors
+- No errors raised — pure data carrier
+
+### Returns
+- On success: `ConvertOptions` instance ready for `convert_registry_with_options(registry, &options)` / `convert_descriptor_with_options(descriptor, &options)`
+- On failure: not applicable (struct construction)
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: true
+- idempotent: true
+
+### Default
+`ConvertOptions::default()` returns `{strict: false, embed_annotations: false, rich_description: false, tags: None, prefix: None}`. Callers using the default Boolean strict semantics SHOULD use the non-`_with_options` `convert_registry(registry, strict)` form for clarity.
+
+---
+
+## Contract: OpenAIConverter::convert_registry_with_options (Rust)
+
+> Method introduced in 0.15.0. Variant of `convert_registry` that accepts a `ConvertOptions` carrier instead of individual Boolean parameters. Necessary for `rich_description`, `embed_annotations`, `tags`, and `prefix` because Rust does not support keyword arguments.
+
+### Inputs
+- registry: &Registry, required — must expose `list(tags?, prefix?)` and `get_definition(module_id)` methods
+- options: &ConvertOptions, required
+
+### Errors
+- ConverterError::Collision — when `module_id` normalization produces name collisions (e.g., `a.b` and `a-b` both → `a-b`); error includes both collided ids
+- ConverterError::Schema — when a module's schema cannot be parsed or strict-mode transformation fails
+
+### Returns
+- On success: `Result<Vec<serde_json::Value>, ConverterError>` — each value is an OpenAI function dict
+- On failure: returns `Err(ConverterError)` (Rust does not raise)
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: false (depends on registry state)
+- idempotent: true
+
+---
+
+## Contract: json_entry_to_scanned_module (Rust)
+
+> Public adapter introduced in 0.15.0. Builds a `ScannedModule` value from a `(module_id, &serde_json::Value)` pair so the apcore-toolkit Markdown renderer can consume registry exports that arrive as JSON (e.g., from `registry.export(...)` or off-disk caches) without round-tripping through the typed `ModuleDescriptor`.
+
+### Inputs
+- module_id: &str, required
+- entry: &serde_json::Value, required — must be a JSON object containing at minimum `description`; may contain `metadata`, `annotations`, `input_schema`, `output_schema`
+
+### Errors
+- No errors raised — missing fields default to empty values:
+  - missing/non-string `description` → `""`
+  - missing/non-object `metadata` → `{}`
+  - missing/non-object `annotations` → empty annotation set
+  - missing `input_schema` → `Value::Object(Map::new())`
+
+### Returns
+- On success: `ScannedModule` with `id: module_id.to_string()`, plus `description`, `metadata`, `annotations`, `input_schema`, `output_schema` extracted from `entry`
+- On failure: not applicable (no error path)
+
+### Properties
+- async: false
+- thread_safe: true
+- pure: true
+- idempotent: true

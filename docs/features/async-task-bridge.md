@@ -196,3 +196,55 @@ The bridge only projects apcore's lifecycle; it does not add new states. Termina
 - thread_safe: true
 - pure: false
 - idempotent: false
+
+---
+
+## Contract: AsyncTaskBridge.handle_preview
+
+> Handler for the `__apcore_module_preview` meta-tool introduced in 0.15.0. Renders a non-executing preview of a module's input schema, description, and metadata so agents can decide whether to invoke before paying the cost of an actual call.
+
+### Inputs
+- module_id: str, required, validates[non-empty string, not starting with `__apcore_`], reject_with=error tuple
+- arguments: dict[str, Any] | None, optional — preserved as-is in the preview envelope when null (distinguishing "no arguments supplied" from "empty object supplied")
+- version_hint: str | None, optional — forwarded to descriptor lookup
+
+### Errors
+- Returns `(content, is_error=True, None)` with `{"error": "PREVIEW_UNAVAILABLE", "module_id": ...}` — when descriptor cannot be resolved OR module does not support preview
+- Returns `(content, is_error=True, None)` with `{"error": "MODULE_NOT_FOUND", "module_id": ...}` — when registry has no descriptor for module_id
+- Returns error tuple — when module_id is empty or starts with reserved `__apcore_` prefix
+
+### Returns
+- On success: tuple `(list[dict], bool, str|None)` — content contains `{"module_id": str, "input_schema": dict, "description": str, "annotations": dict, "arguments": dict | None}`; `arguments` field reflects the input verbatim (null preserved as null, not coerced to empty object)
+- On failure: returns error tuple (never raises)
+
+### Properties
+- async: true
+- thread_safe: true
+- pure: false
+- idempotent: true
+
+---
+
+## Contract: AsyncTaskBridge.__init__ (executor parameter)
+
+> Constructor parameter introduced in 0.15.0. The bridge previously bound to its manager's default executor; the explicit `executor` kwarg lets callers route async submissions through a different executor (e.g., a sandboxed executor for untrusted modules) while sharing the manager.
+
+### Inputs
+- manager: AsyncTaskManager, required
+- executor: Executor | None, optional — defaults to `manager.executor` (the manager-bound executor) when omitted; when provided, the bridge calls `manager.submit(..., executor=executor)` for every dispatch and for the `__apcore_module_preview` handler
+- redactor: Redactor | None, optional — passed through to `_handle_status_tool` for result masking
+- options: AsyncTaskBridgeOptions | None, optional (TS) — `{ executor?, redactor? }` aggregate form for ergonomic construction
+
+### Errors
+- TypeError(code=INVALID_ARG) — when manager is None
+- TypeError(code=INVALID_ARG) — when executor is provided but does not implement the `Executor` interface (Python: missing `call_async`; TS: missing `callAsync`; Rust: type-checked at compile time)
+
+### Returns
+- On success: AsyncTaskBridge instance
+- On failure: raises (constructor)
+
+### Properties
+- async: false
+- thread_safe: false (constructor must be called from a single thread; instance is thread-safe after construction)
+- pure: false
+- idempotent: false
