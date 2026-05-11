@@ -92,7 +92,9 @@ The system supports global approval modes via the `--approval` CLI flag:
 
 ### Inputs
 - request: ApprovalRequest, required, validates[has `context`, `module_id`, `description`, `arguments` fields], reject_with=ApprovalResult(status="rejected")
-- request.context.data[MCP_ELICIT_KEY]: async callable, required per-call — extracted from context at call time (not constructor), reject_with=ApprovalResult(status="rejected", reason="No elicitation callback available")
+- request.context.data[MCP_ELICIT_KEY]: async callable, required per-call (Python / TypeScript) — extracted from context at call time (not constructor), reject_with=ApprovalResult(status="rejected", reason="No elicitation callback available")
+
+> **Rust contract variation**: `ElicitationApprovalHandler::new(elicit)` accepts an `Option<Arc<dyn ElicitCallback>>` at construction. Because Rust's `Context<Value>` (with `serde_json::Value`) cannot store async closures, the handler cannot extract a callback from `request.context.data` per-call (which is always the case for Rust's `serde_json::Value`-typed context). Instead, Rust uses the constructor-injected callback for every `request_approval` call. The rejection semantics ("No context available for elicitation", "No elicitation callback available") are preserved: if construction omitted the callback, the handler returns `ApprovalResult(status="rejected", reason="No elicitation callback available")`.
 
 ### Errors
 - Returns `ApprovalResult(status="rejected", reason="No context available for elicitation")` — when request.context is None or has no `data`
@@ -111,3 +113,27 @@ The system supports global approval modes via the `--approval` CLI flag:
 - thread_safe: true
 - pure: false
 - idempotent: false
+
+### Cross-Language Notes
+
+The elicit-callback source differs between Python/TypeScript and Rust:
+
+| Language     | Callback source                                                              |
+|--------------|------------------------------------------------------------------------------|
+| Python       | `request.context.data[MCP_ELICIT_KEY]` (per-call lookup in execution context)|
+| TypeScript   | `request.context.data[MCP_ELICIT_KEY]` (per-call lookup in execution context)|
+| Rust         | Constructor-injected `Option<Arc<dyn ElicitCallback>>` (set on handler ctor) |
+
+The wire-level rejection semantics ("No context available for elicitation", "No elicitation callback available", "Elicitation request failed", "Elicitation returned no response") are preserved across all three SDKs. The structural difference exists because Rust's `Context<Value>` is parameterized over `serde_json::Value`, which cannot hold async closures.
+
+---
+
+## Implementation Notes — Failure Containment
+
+The elicit callback's failure containment guarantees differ across language SDKs:
+
+- **Python**: `try/except Exception` covers thrown exceptions and awaited rejections. Does NOT catch `BaseException` subclasses (`KeyboardInterrupt`, `SystemExit`, `asyncio.CancelledError` in Python 3.8+) — these propagate.
+- **TypeScript**: `try/catch` covers thrown errors and rejected Promises. JavaScript has no panic semantics distinct from exceptions, so this is the strongest guarantee available on the runtime.
+- **Rust**: `futures::FutureExt::catch_unwind` additionally catches `panic!()` across `.await` points, converting them to `ApprovalResult(status="rejected", reason="Elicitation request failed")`. This is the strongest guarantee — even unwinding panics in user-supplied elicit callbacks are contained.
+
+When porting modules between languages, treat panic-safety as Rust-only. JavaScript/TypeScript and Python module authors should not rely on panic-recovery semantics, because their runtimes either do not distinguish panics from exceptions (JS) or let certain `BaseException`s bypass the catch block (Python). See audit finding **D11-108** for the original gap analysis.

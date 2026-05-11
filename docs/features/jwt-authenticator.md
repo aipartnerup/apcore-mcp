@@ -122,6 +122,8 @@ Authentication is automatically bypassed when using the `stdio` transport, as th
 ### Inputs
 - headers: dict[str, str], required — flat HTTP headers map (NOT the full request); Authorization header extracted as `headers.get("authorization", "")`; Bearer prefix is case-insensitive
 
+> **`type` claim handling**: an empty string `""` in the `type` claim is treated as a missing claim and falls back to the default `"user"`. Implementations MUST normalize empty string → default. This aligns Python's truthy-fallback semantics with TypeScript and Rust, which now explicitly filter empty strings before applying the default. See audit finding **D11-107**. The same normalization applies to `id_claim` rejection (empty string is rejected as if absent, returning None) and to optional claim mappings that fall back to defaults.
+
 ### Errors
 - Returns None — when Authorization header is missing, not prefixed with "Bearer ", or token is empty
 - Returns None — when JWT signature is invalid, token is expired, or any required claim is missing
@@ -129,7 +131,7 @@ Authentication is automatically bypassed when using the `stdio` transport, as th
 - Never raises (all pyjwt.InvalidTokenError subtypes are caught and logged at DEBUG)
 
 ### Returns
-- On success: Identity(id=str, type=str, roles=tuple[str, ...], attrs=dict) — id=str(identity_id); type defaults to "user" when type_claim is absent or None in JWT payload; roles=tuple of str coerced from list; attrs populated from attrs_claims when configured
+- On success: Identity(id=str, type=str, roles=tuple[str, ...], attrs=dict) — id=str(identity_id); type defaults to `"user"` when type_claim is absent, None, **or an empty string `""`** in the JWT payload (see "type claim handling" above, D11-107); roles=tuple of str coerced from list; attrs populated from attrs_claims when configured
 - On failure: None
 - `require_auth` policy (whether None triggers 401) is owned by AuthMiddleware, NOT by this class
 

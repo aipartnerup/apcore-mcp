@@ -114,7 +114,9 @@ The bridge only projects apcore's lifecycle; it does not add new states. Termina
 - module_id: str, required, **validation deferred to caller** (meta-tool dispatcher in production; direct callers are trusted)
 - arguments: dict[str, Any], required
 - context: Context | None, optional — identity and trace_parent extracted when present
-- progress_token: Any | None, optional — when provided alongside send_notification, installs a progress sink in `context.data[MCP_PROGRESS_KEY]` before calling AsyncTaskManager.submit
+- progress_token: Any | None, optional — when provided alongside send_notification, the bridge wires a progress sink so module-emitted progress events are fanned out as MCP `notifications/progress`. The installation point is language-specific (see ## Cross-Language Notes):
+  - **Python / TypeScript**: progress sink is installed into `context.data[MCP_PROGRESS_KEY]` (`"_mcp_progress"`) **before** calling `AsyncTaskManager.submit`. Modules read the sink via `context.data["_mcp_progress"]`.
+  - **Rust**: progress sender is registered on bridge-side maps (`progress_senders[task_id]`) **after** `AsyncTaskManager.submit` returns the task_id. Modules receive progress through a bridge-managed channel keyed by `task_id` (not via `context.data`, since Rust's `Context<Value>` uses `serde_json::Value` and cannot hold async closures).
 - send_notification: async callable | None, optional — paired with progress_token for fan-out
 - session_key: str | None, optional — when provided, task_id is recorded in _session_tasks for mass-cancel on disconnect
 
@@ -131,6 +133,18 @@ The bridge only projects apcore's lifecycle; it does not add new states. Termina
 - thread_safe: true
 - pure: false
 - idempotent: false
+
+### Cross-Language Notes
+
+The progress-sink installation point differs between Python/TypeScript (in-context) and Rust (bridge-managed channel) because Rust's `Context<Value>` (where the type parameter resolves to `serde_json::Value`) cannot hold async closures. Both contracts produce the same wire-level `notifications/progress` events for consumers — the behavioral contract for AI clients (receiving notifications/progress events keyed by `progressToken`) is identical. The implementation surface differs by language:
+
+| Language     | Install when             | Where                                                | Module reads from                                       |
+|--------------|--------------------------|------------------------------------------------------|---------------------------------------------------------|
+| Python       | Before `manager.submit`  | `context.data[MCP_PROGRESS_KEY]` (`"_mcp_progress"`) | `context.data["_mcp_progress"]`                         |
+| TypeScript   | Before `manager.submit`  | `context.data[MCP_PROGRESS_KEY]` (`"_mcp_progress"`) | `context.data["_mcp_progress"]`                         |
+| Rust         | After `manager.submit`   | `progress_senders[task_id]` on the bridge            | Bridge-managed channel keyed by `task_id`               |
+
+This asymmetry is structural, not behavioral: when porting modules between languages, the module-facing API differs (context lookup vs. channel-on-bridge), but the wire-level progress event stream observed by MCP clients is byte-equivalent.
 
 ---
 
