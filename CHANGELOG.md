@@ -5,16 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
 
-### Changed
-
-- Spec: `AsyncTaskBridge.submit` — document Rust's bridge-managed progress channel (`progress_senders[task_id]` registered after `manager.submit`) as a language-specific variation of the Python/TypeScript in-context (`context.data[MCP_PROGRESS_KEY]`) contract. Wire-level `notifications/progress` events are unchanged across SDKs (D10-001).
-- Spec: `ElicitationApprovalHandler` — document Rust's constructor-injected `Option<Arc<dyn ElicitCallback>>` contract as a language-specific variation of the Python/TypeScript per-call `request.context.data[MCP_ELICIT_KEY]` lookup. Rejection semantics are preserved across SDKs (D10-002).
-- Spec: `JWTAuthenticator.authenticate` — `type` claim normalization: empty string `""` is treated as a missing claim and falls back to the default `"user"`, aligning Python's truthy-fallback semantics with TypeScript and Rust (D11-107).
-- Spec: Approval handler — document panic-guard cross-language asymmetry: Python `try/except Exception` (BaseException propagates), TypeScript `try/catch` (no panic distinction), Rust `futures::FutureExt::catch_unwind` (catches `panic!()` across `.await`). Treat panic-safety as Rust-only when porting modules (D11-108).
-
-## [0.15.0] - 2026-05-09
+## [0.15.0] - 2026-05-14
 
 Cross-SDK release leveraging **apcore 0.21.0 + apcore-toolkit 0.6.0**.
 Promotes three new upstream capabilities into MCP-facing surface area
@@ -23,7 +15,10 @@ across all three SDKs (`apcore-mcp-python`, `apcore-mcp-rust`,
 and Markdown rendering across languages.
 
 ### Changed
-
+- Spec: `AsyncTaskBridge.submit` — document Rust's bridge-managed progress channel (`progress_senders[task_id]` registered after `manager.submit`) as a language-specific variation of the Python/TypeScript in-context (`context.data[MCP_PROGRESS_KEY]`) contract. Wire-level `notifications/progress` events are unchanged across SDKs (D10-001).
+- Spec: `ElicitationApprovalHandler` — document Rust's constructor-injected `Option<Arc<dyn ElicitCallback>>` contract as a language-specific variation of the Python/TypeScript per-call `request.context.data[MCP_ELICIT_KEY]` lookup. Rejection semantics are preserved across SDKs (D10-002).
+- Spec: `JWTAuthenticator.authenticate` — `type` claim normalization: empty string `""` is treated as a missing claim and falls back to the default `"user"`, aligning Python's truthy-fallback semantics with TypeScript and Rust (D11-107).
+- Spec: Approval handler — document panic-guard cross-language asymmetry: Python `try/except Exception` (BaseException propagates), TypeScript `try/catch` (no panic distinction), Rust `futures::FutureExt::catch_unwind` (catches `panic!()` across `.await`). Treat panic-safety as Rust-only when porting modules (D11-108).
 - **Dependency bumps**: `apcore >= 0.21.0` (Python/Rust), `apcore-js >= 0.21.1` (TS), `apcore-toolkit >= 0.6.0` (Python/Rust) / `>= 0.6.1` (TS).
 - **Rust BREAKING**: `AsyncTaskBridge::{submit, cancel, cancel_session_tasks, handle_meta_tool, shutdown}` are now `async fn` — propagates upstream apcore 0.20+ async signatures (D10-003 / D10-004). Sync transport-layer cancel handlers now `tokio::spawn` the cancel call as fire-and-forget.
 
