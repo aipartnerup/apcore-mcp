@@ -70,6 +70,7 @@ nav:
       - Approval Handler: features/approval-handler.md
       - Async Task Bridge: features/async-task-bridge.md
       - Explorer UI: features/explorer-ui.md
+      - Markdown: features/markdown.md
   - Specifications:
       - Product Requirements: prd-apcore-mcp.md
       - Software Requirements: srs-apcore-mcp.md

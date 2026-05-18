@@ -26,7 +26,7 @@ The Explorer UI is an optional, web-based tool dashboard for developers. It allo
 ## Core Responsibilities
 
 1. **Dashboard Hosting** — Serves the static assets (HTML, CSS, JS) for the explorer interface at a configurable URL (default `/explorer`).
-2. **Registry Inspector** — Connects the web UI to the internal `Registry` to provide an up-to-date list of available tools.
+2. **Registry Explorer** — Connects the web UI to the internal `Registry` to provide an up-to-date list of available tools.
 3. **Execution Simulator** — Provides a controlled environment for calling tool endpoints (`POST /explorer/tools/<name>/call`) and displaying the formatted results.
 4. **Validation Helper** — Leverages the `ExecutionRouter`'s preflight check to provide real-time schema validation for inputs.
 

@@ -51,7 +51,7 @@
 
 ### 1.1 Purpose
 
-This Software Requirements Specification defines the complete functional and non-functional requirements for **apcore-mcp**, an independent adapter package available in Python, TypeScript, and Rust that automatically bridges any apcore Module Registry into both a fully functional MCP (Model Context Protocol) Server and OpenAI-compatible tool definitions. This document formalizes 46 features from the upstream PRD (F-001 through F-046) into traceable, testable requirements organized by component module. It serves as the authoritative reference for implementation, testing, and acceptance of apcore-mcp v0.14.0.
+This Software Requirements Specification defines the complete functional and non-functional requirements for **apcore-mcp**, an independent adapter package available in Python, TypeScript, and Rust that automatically bridges any apcore Module Registry into both a fully functional MCP (Model Context Protocol) Server and OpenAI-compatible tool definitions. This document formalizes the upstream PRD's F-IDs into traceable, testable requirements organized by component module. It serves as the authoritative reference for implementation, testing, and acceptance of apcore-mcp v0.15.0 (released 2026-05-14). The v0.15.0 surface extends the v0.14.0 baseline with rich Markdown tool descriptions (`rich_description` / `richDescription` / `with_rich_description`), the `__apcore_module_preview` meta-tool (apcore PROTOCOL_SPEC §5.6), the public `markdown` module, the `CIRCUIT_BREAKER_OPEN` error code, and Rust-side `async fn` lifecycle methods on `AsyncTaskBridge`; the F-ID series is additively extended rather than renumbered.
 
 The intended audience includes software engineers implementing apcore-mcp, QA engineers writing test plans, and project stakeholders evaluating feature completeness.
 
@@ -96,7 +96,7 @@ apcore-mcp does NOT reimplement the MCP protocol (it uses the official `mcp` Pyt
 | **xxx-apcore** | Convention for apcore adapter projects targeting specific domains: `comfyui-apcore`, `vnpy-apcore`, `blender-apcore`, etc. |
 | **CallToolResult** | MCP SDK type representing the result of a tool call, containing `content` (list of content items) and `isError` (boolean). |
 | **TextContent** | MCP SDK type for text-based content items within a CallToolResult. |
-| **ToolAnnotations** | MCP SDK type for behavioral hints on tools: `read_only_hint`, `destructive_hint`, `idempotent_hint`, `open_world_hint`. |
+| **ToolAnnotations** | MCP SDK type for behavioral hints on tools: `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`. |
 | **JSON Schema** | A vocabulary for annotating and validating JSON documents (draft 2020-12 or compatible). |
 
 ### 1.4 References
@@ -372,15 +372,15 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 | **Priority** | P0 |
 | **Traces to** | F-002 |
 
-**Description:** When `ModuleAnnotations.destructive` is `True`, the `AnnotationMapper.to_mcp_annotations()` method shall return a `ToolAnnotations` instance with `destructive_hint=True`. When `False`, it shall return `destructive_hint=False`.
+**Description:** When `ModuleAnnotations.destructive` is `True`, the `AnnotationMapper.to_mcp_annotations()` method shall return a `ToolAnnotations` instance with `destructiveHint=True`. When `False`, it shall return `destructiveHint=False`.
 
 **Input/Trigger:** A `ModuleAnnotations` instance with `destructive` field set.
 
-**Expected Output:** `ToolAnnotations(destructive_hint=<value>)` where `<value>` equals the input `destructive` value.
+**Expected Output:** `ToolAnnotations(destructiveHint=<value>)` where `<value>` equals the input `destructive` value.
 
 **Boundary Conditions:**
-- `destructive=True`: `destructive_hint=True`.
-- `destructive=False`: `destructive_hint=False`.
+- `destructive=True`: `destructiveHint=True`.
+- `destructive=False`: `destructiveHint=False`.
 
 **Error Conditions:** None.
 
@@ -395,15 +395,15 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 | **Priority** | P0 |
 | **Traces to** | F-002 |
 
-**Description:** When `ModuleAnnotations.readonly` is `True`, the `AnnotationMapper.to_mcp_annotations()` method shall return a `ToolAnnotations` instance with `read_only_hint=True`. When `False`, it shall return `read_only_hint=False`.
+**Description:** When `ModuleAnnotations.readonly` is `True`, the `AnnotationMapper.to_mcp_annotations()` method shall return a `ToolAnnotations` instance with `readOnlyHint=True`. When `False`, it shall return `readOnlyHint=False`.
 
 **Input/Trigger:** A `ModuleAnnotations` instance with `readonly` field set.
 
-**Expected Output:** `ToolAnnotations(read_only_hint=<value>)` where `<value>` equals the input `readonly` value.
+**Expected Output:** `ToolAnnotations(readOnlyHint=<value>)` where `<value>` equals the input `readonly` value.
 
 **Boundary Conditions:**
-- `readonly=True`: `read_only_hint=True`.
-- `readonly=False`: `read_only_hint=False`.
+- `readonly=True`: `readOnlyHint=True`.
+- `readonly=False`: `readOnlyHint=False`.
 
 **Error Conditions:** None.
 
@@ -418,15 +418,15 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 | **Priority** | P0 |
 | **Traces to** | F-002 |
 
-**Description:** When `ModuleAnnotations.idempotent` is `True`, the `AnnotationMapper.to_mcp_annotations()` method shall return a `ToolAnnotations` instance with `idempotent_hint=True`. When `False`, it shall return `idempotent_hint=False`.
+**Description:** When `ModuleAnnotations.idempotent` is `True`, the `AnnotationMapper.to_mcp_annotations()` method shall return a `ToolAnnotations` instance with `idempotentHint=True`. When `False`, it shall return `idempotentHint=False`.
 
 **Input/Trigger:** A `ModuleAnnotations` instance with `idempotent` field set.
 
-**Expected Output:** `ToolAnnotations(idempotent_hint=<value>)` where `<value>` equals the input `idempotent` value.
+**Expected Output:** `ToolAnnotations(idempotentHint=<value>)` where `<value>` equals the input `idempotent` value.
 
 **Boundary Conditions:**
-- `idempotent=True`: `idempotent_hint=True`.
-- `idempotent=False`: `idempotent_hint=False`.
+- `idempotent=True`: `idempotentHint=True`.
+- `idempotent=False`: `idempotentHint=False`.
 
 **Error Conditions:** None.
 
@@ -441,15 +441,15 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 | **Priority** | P0 |
 | **Traces to** | F-002 |
 
-**Description:** When `ModuleAnnotations.open_world` is `True`, the `AnnotationMapper.to_mcp_annotations()` method shall return a `ToolAnnotations` instance with `open_world_hint=True`. When `False`, it shall return `open_world_hint=False`.
+**Description:** When `ModuleAnnotations.open_world` is `True`, the `AnnotationMapper.to_mcp_annotations()` method shall return a `ToolAnnotations` instance with `openWorldHint=True`. When `False`, it shall return `openWorldHint=False`.
 
 **Input/Trigger:** A `ModuleAnnotations` instance with `open_world` field set.
 
-**Expected Output:** `ToolAnnotations(open_world_hint=<value>)` where `<value>` equals the input `open_world` value.
+**Expected Output:** `ToolAnnotations(openWorldHint=<value>)` where `<value>` equals the input `open_world` value.
 
 **Boundary Conditions:**
-- `open_world=True` (default): `open_world_hint=True`.
-- `open_world=False`: `open_world_hint=False`.
+- `open_world=True` (default): `openWorldHint=True`.
+- `open_world=False`: `openWorldHint=False`.
 
 **Error Conditions:** None.
 
@@ -464,11 +464,11 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 | **Priority** | P0 |
 | **Traces to** | F-002 |
 
-**Description:** When the `annotations` parameter is `None`, the `AnnotationMapper.to_mcp_annotations()` method shall return a `ToolAnnotations` instance with all fields set to their MCP defaults: `read_only_hint=False`, `destructive_hint=False`, `idempotent_hint=False`, `open_world_hint=True`.
+**Description:** When the `annotations` parameter is `None`, the `AnnotationMapper.to_mcp_annotations()` method shall return a `ToolAnnotations` instance with all fields set to their MCP defaults: `readOnlyHint=False`, `destructiveHint=False`, `idempotentHint=False`, `openWorldHint=True`.
 
 **Input/Trigger:** `annotations=None`.
 
-**Expected Output:** `ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=True)`.
+**Expected Output:** `ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True)`.
 
 **Boundary Conditions:** None (single case: input is `None`).
 
@@ -4037,7 +4037,7 @@ mcp:
 | `description` | `str` | `ModuleDescriptor.description` | Human-readable tool description |
 | `inputSchema` | `dict[str, Any]` | `ModuleDescriptor.input_schema` after $ref inlining | JSON Schema for tool input parameters |
 | `outputSchema` | `dict[str, Any]` | `ModuleDescriptor.output_schema` after $ref inlining | JSON Schema for tool output (optional) |
-| `annotations` | `ToolAnnotations` | `ModuleDescriptor.annotations` via AnnotationMapper | Behavioral hints: `read_only_hint`, `destructive_hint`, `idempotent_hint`, `open_world_hint` |
+| `annotations` | `ToolAnnotations` | `ModuleDescriptor.annotations` via AnnotationMapper | Behavioral hints: `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint` |
 
 ### 7.2 OpenAI Tool Definition
 
@@ -4761,7 +4761,7 @@ apcore-mcp **MUST** resolve each MCP-specific adapter hook (`schema_converter`, 
 
 ### FR-EXTMGR-003: Load Order Guarantee
 
-The Extension Bridge **MUST** enforce the load sequence: (1) `ExtensionManager.apply()`, (2) built-in MCP middleware installation, (3) adapter hook binding, (4) protocol handler registration. User middleware registered via the `middleware` extension point **MUST** be installed before built-in middleware (tracing, redaction, preflight) so that built-ins sit closest to the module boundary. When `serve()` is called with an `Executor` rather than a `Registry`, the bridge **MUST** still invoke `apply()` on it; duplicate application detected via an internal sentinel **MUST** emit a WARNING but **MUST NOT** raise.
+The Extension Bridge **MUST** enforce the load sequence: (1) extension registrations visible on the Executor (satisfied by apcore's own `Executor`/`ExtensionManager` integration — no literal `apply()` call required, per the EB-1 withdrawal noted in `docs/features/extension-bridge.md` Status §), (2) built-in MCP middleware installation, (3) adapter hook binding, (4) protocol handler registration. User middleware registered via the `middleware` extension point **MUST** be installed before built-in middleware (tracing, redaction, preflight) so that built-ins sit closest to the module boundary. When `serve()` is called with an `Executor` rather than a `Registry`, the bridge **MUST NOT** re-trigger extension application (apcore already applied them at Executor construction); duplicate application attempts detected via an internal sentinel **MUST** emit a WARNING but **MUST NOT** raise.
 
 ---
 

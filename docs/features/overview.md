@@ -1,7 +1,7 @@
 # Feature Overview
 
 > Auto-generated index of feature specs for apcore-mcp.
-> Updated: 2026-04-30
+> Updated: 2026-05-14
 
 ## Features
 
@@ -20,6 +20,7 @@
 | [Approval Handler](./approval-handler.md) | Implements human-in-the-loop confirmation via MCP. | execution-router | released-v0.14.0 |
 | [Async Task Bridge](./async-task-bridge.md) | Routes async-hinted modules to apcore's AsyncTaskManager and exposes task meta-tools. | execution-router, error-mapper | released-v0.14.0 |
 | [Explorer UI](./explorer-ui.md) | Web dashboard for inspecting and testing tools. | mcp-server-factory, execution-router | released-v0.14.0 |
+| [Markdown](./markdown.md) | Renders `Tool.description` and OpenAI `function.description` as canonical apcore-toolkit Markdown for richer LLM tool-selection signal (`rich_description` / `richDescription` / `with_rich_description`). | apcore-toolkit 0.6+ (optional) | released-v0.15.0 |
 
 ## Execution Order
 

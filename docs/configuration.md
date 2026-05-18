@@ -47,6 +47,9 @@ The unified entry point — configure once, use everywhere.
         require_auth=True,           # False = permissive mode
         exempt_paths=None,           # paths that bypass auth
         approval_handler=None,       # approval handler
+        rich_description=False,      # v0.15+: render Tool.description as
+                                     # apcore-toolkit Markdown when toolkit
+                                     # is installed (`pip install apcore-mcp[markdown]`).
     )
 
     # Launch as MCP server (blocking)
@@ -85,6 +88,11 @@ The unified entry point — configure once, use everywhere.
       outputFormatter: undefined, // default: undefined - raw JSON
       authenticator: undefined,
       requireAuth: true,
+      richDescription: false,     // v0.15+: render Tool.description as
+                                  // apcore-toolkit Markdown when toolkit
+                                  // is installed (declared under
+                                  // `optionalDependencies`). Requires
+                                  // `await MCPServerFactory.prepare()` at startup.
     });
 
     // Launch as MCP server (blocking)
@@ -124,6 +132,10 @@ The unified entry point — configure once, use everywhere.
         .metrics_collector(collector)         // MetricsExporter for /metrics endpoint
         .output_formatter(formatter)         // custom result formatting
         .approval_handler(handler)           // approval handler for runtime approval
+        // v0.15+: render Tool.description as apcore-toolkit Markdown.
+        // Equivalent to Python's `rich_description=True` / TS `richDescription: true`.
+        // .with_rich_description(true) is also available on MCPServerFactory directly
+        // for callers wiring the factory manually.
         .build()?;
 
     // Launch as MCP server (synchronous, blocking; spawns its own Tokio runtime).
@@ -188,7 +200,7 @@ The function-based API is still fully supported for users who prefer it.
     use apcore::{config::Config, executor::Executor};
     use apcore_mcp::{serve, ServeConfig};
 
-    // Construct the executor backend (only BackendSource::Executor is functional in v0.14.0).
+    // Construct the executor backend (only BackendSource::Executor is functional as of v0.15.0).
     let registry = Registry::new();
     // ... register modules ...
     let executor = Arc::new(Executor::new(registry, Config::default()));
@@ -313,6 +325,17 @@ By default, both `APCoreMCP` and the function-based `serve()` API leave tool out
 
 !!! note
     Pre-0.10.0 builds defaulted `APCoreMCP` to Markdown via apcore-toolkit auto-wiring. CHANGELOG 0.10.0 removed apcore-toolkit as a required dependency and changed the default to `None` (raw JSON). Users wanting Markdown should install apcore-toolkit explicitly and pass `to_markdown`.
+
+    **As of v0.15.0**, Markdown-rendered tool *descriptions* are a first-class
+    feature again — opt in via `rich_description=True` (Python),
+    `richDescription: true` (TypeScript), or
+    `MCPServerFactory::with_rich_description(true)` (Rust). When apcore-toolkit
+    is installed (declared under `optionalDependencies` in TS / behind the
+    `[markdown]` extra in Python / linked at build time in Rust), tool
+    descriptions are rendered as canonical apcore-toolkit Markdown so LLMs
+    pack more decision-relevant signal per token. The `output_formatter` /
+    `outputFormatter` option above is unrelated — it targets module *output*,
+    not tool description rendering.
 
 ## Authentication (JWT)
 

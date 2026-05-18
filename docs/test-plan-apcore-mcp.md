@@ -584,8 +584,8 @@ show_missing = true
   ```
 - **Steps:**
   1. Call `mapper.to_mcp_annotations(annotations)`.
-  2. Assert `result.read_only_hint` is `True`.
-- **Expected Result:** `ToolAnnotations(read_only_hint=True, destructive_hint=False, idempotent_hint=False, open_world_hint=True)`.
+  2. Assert `result.readOnlyHint` is `True`.
+- **Expected Result:** `ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=False, openWorldHint=True)`.
 - **Traceability:** F-002 (AC1)
 
 ---
@@ -601,8 +601,8 @@ show_missing = true
   ```
 - **Steps:**
   1. Call `mapper.to_mcp_annotations(annotations)`.
-  2. Assert `result.destructive_hint` is `True`.
-- **Expected Result:** `destructive_hint=True`, all others at their respective values.
+  2. Assert `result.destructiveHint` is `True`.
+- **Expected Result:** `destructiveHint=True`, all others at their respective values.
 - **Traceability:** F-002 (AC2)
 
 ---
@@ -618,8 +618,8 @@ show_missing = true
   ```
 - **Steps:**
   1. Call `mapper.to_mcp_annotations(annotations)`.
-  2. Assert `result.idempotent_hint` is `True`.
-- **Expected Result:** `idempotent_hint=True`.
+  2. Assert `result.idempotentHint` is `True`.
+- **Expected Result:** `idempotentHint=True`.
 - **Traceability:** F-002 (AC3)
 
 ---
@@ -635,8 +635,8 @@ show_missing = true
   ```
 - **Steps:**
   1. Call `mapper.to_mcp_annotations(annotations)`.
-  2. Assert `result.open_world_hint` is `False`.
-- **Expected Result:** `open_world_hint=False`.
+  2. Assert `result.openWorldHint` is `False`.
+- **Expected Result:** `openWorldHint=False`.
 - **Traceability:** F-002 (AC4)
 
 ---
@@ -650,7 +650,7 @@ show_missing = true
 - **Steps:**
   1. Call `mapper.to_mcp_annotations(None)`.
   2. Assert result uses MCP default values.
-- **Expected Result:** `ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=True)`.
+- **Expected Result:** `ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True)`.
 - **Traceability:** F-002 (AC5)
 
 ---
@@ -667,7 +667,7 @@ show_missing = true
 - **Steps:**
   1. Call `mapper.to_mcp_annotations(annotations)`.
   2. Assert all four MCP hint fields match.
-- **Expected Result:** `ToolAnnotations(read_only_hint=True, destructive_hint=True, idempotent_hint=True, open_world_hint=False)`.
+- **Expected Result:** `ToolAnnotations(readOnlyHint=True, destructiveHint=True, idempotentHint=True, openWorldHint=False)`.
 - **Traceability:** F-002
 
 ---
@@ -1263,7 +1263,7 @@ show_missing = true
   2. Assert `tool.name` equals `"image.resize"`.
   3. Assert `tool.description` equals `"Resize an image to the specified dimensions"`.
   4. Assert `tool.inputSchema` has `type: object` with `width` and `height` properties.
-  5. Assert `tool.annotations.idempotent_hint` is `True`.
+  5. Assert `tool.annotations.idempotentHint` is `True`.
 - **Expected Result:** `types.Tool` with name, description, inputSchema, and annotations all correctly mapped from the descriptor.
 - **Traceability:** F-001, F-002, F-005
 
@@ -1335,8 +1335,8 @@ show_missing = true
   ```
 - **Steps:**
   1. Call `factory.build_tool(descriptor)`.
-  2. Assert `tool.annotations.read_only_hint` is `False`.
-  3. Assert `tool.annotations.open_world_hint` is `True`.
+  2. Assert `tool.annotations.readOnlyHint` is `False`.
+  3. Assert `tool.annotations.openWorldHint` is `True`.
 - **Expected Result:** Tool uses MCP default annotation values.
 - **Traceability:** F-002 (AC5)
 
@@ -3666,10 +3666,10 @@ EXPECTED_MCP_TOOL = types.Tool(
         "required": ["width", "height"]
     },
     annotations=ToolAnnotations(
-        read_only_hint=False,
-        destructive_hint=False,
-        idempotent_hint=True,
-        open_world_hint=True
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=True
     )
 )
 ```

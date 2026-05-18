@@ -179,7 +179,7 @@ Integrate **apcore-mcp** directly into your application. The `APCoreMCP` class i
     use apcore::{config::Config, executor::Executor, registry::registry::Registry};
     use apcore_mcp::APCoreMCP;
 
-    // BackendSource::Executor is the functional backend in v0.14.0.
+    // BackendSource::Executor is the functional backend (as of v0.15.0).
     // Construct Registry → Executor first, then hand the Arc<Executor> to APCoreMCP.
     let registry = Registry::new();
     // ... register modules ...
@@ -277,5 +277,5 @@ Add a `.mcp.json` or equivalent in your project root:
 ## Next Steps
 
 - Explore the [Technical Design](tech-design-apcore-mcp.md) for architecture details.
-- See how [Approval Mechanisms](tech-design-apcore-mcp.md#approval-mechanism) work for sensitive tools.
-- Learn about [JWT Authentication](tech-design-apcore-mcp.md#security-auth) for remote access.
+- See how [Approval Mechanisms](tech-design-apcore-mcp.md#612-approval-handler-f-028) work for sensitive tools.
+- Learn about [JWT Authentication](tech-design-apcore-mcp.md#611-jwt-authentication-f-027) for remote access.

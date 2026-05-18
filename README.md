@@ -191,6 +191,7 @@ The project is architected as a set of modular features, each with its own speci
 - [Approval Handler](docs/features/approval-handler.md) — Human-in-the-loop elicitation
 - [Async Task Bridge](docs/features/async-task-bridge.md) — Routes async-hinted modules to apcore's AsyncTaskManager
 - [Explorer UI](docs/features/explorer-ui.md) — Interactive dev dashboard
+- [Markdown](docs/features/markdown.md) — Rich Markdown tool descriptions via apcore-toolkit (v0.15+)
 
 ---
 

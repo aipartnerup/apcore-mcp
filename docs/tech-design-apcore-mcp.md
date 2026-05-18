@@ -11,6 +11,8 @@
 | PRD Ref     | `docs/prd-apcore-mcp.md` v1.8                                           |
 | License     | Apache 2.0                                                               |
 
+> **v2.0 — 2026-05-14 (released as 0.15.0)**: rich Markdown tool descriptions (`rich_description` / `richDescription` / `MCPServerFactory::with_rich_description`) backed by apcore-toolkit 0.6+; `__apcore_module_preview` meta-tool driving `Executor.validate()` (apcore PROTOCOL_SPEC §5.6); new public `markdown` module; new `CIRCUIT_BREAKER_OPEN` error code; Rust `AsyncTaskBridge::{submit, cancel, cancel_session_tasks, handle_meta_tool, shutdown}` are now `async fn` (propagates upstream apcore 0.20+ async signatures); Rust `BindingPolicyViolation` match arm removed (apcore 0.21 dropped the variant, wire string preserved); preview handler forwards `arguments: null` verbatim to `executor.validate()` instead of coercing to `{}`. apcore-toolkit 0.6+ pinned across SDKs.
+>
 > **v1.9 — 2026-04-28 (released as 0.14.0)**: cross-language deferred-modules sync. JWT-1 `Authenticator(headers: HeaderMap)` unification; OC-5 Rust `convert_registry(&apcore::Registry)` (canonical); TM-4 Python `TransportManager.set_async_task_bridge(...)` + `transport_session_var`; AH-1 Rust per-request elicit `tokio::task_local!`; EM-3 hardcoded `userFixable` for dependency/binding/version-constraint codes; EM-6 Rust `to_mcp_error_any` generic-error fallback; MID-5 bijection-guarded denormalize variants; OC-1 TS strict-mode walker parity (apcore `to_strict_schema` semantics); EB-2 adapter-hook kwargs (`schema_converter` / `annotation_mapper` / `error_mapper`) on `serve()`/`async_serve()` in Python+TS. mcp-embedded-ui dep raised to >=0.4.0 (provides `POST /tools/{name}/validate`). EB-1 (`ExtensionManager.apply()`) and Rust EB-2 deferred to a future release.
 
 ---
@@ -325,6 +327,9 @@ graph TB
 | **JWTAuthenticator constructor** | Positional `key` + keyword args | Single options object with `key` + deprecated `secret` alias | TypeScript's `secret` was renamed to `key` for clarity; alias kept for backward compat. Both support `requireAuth`. |
 | **Explorer integration** | `create_explorer_mount()` returns Starlette `Mount` | `TransportManager.setExplorer(handler, prefix)` | Starlette uses route mounts; Node.js HTTP uses handler functions. |
 | **buildInitOptions()** | `MCPServerFactory.build_init_options()` public method | Init options built inline in `serve()`/`asyncServe()` | Python exposes it for `MCPServer` wrapper; TypeScript doesn't need it. |
+| **Traceparent helpers** | Inlined inside `BridgeContext` plumbing; no public helpers | Public `parseTraceparent(raw)` (async) + `buildTraceparent(traceId)` (sync) exports | TS exposes them because Node's `crypto.randomBytes` import path and dynamic `apcore-js` resolution differ at module load time; Python/Rust call into their language SDK directly. Auditors should classify these as TS-only utility surface, not missing-API gaps. |
+| **createBridgeContext helper** | Construct `apcore.Context` directly | Public `createBridgeContext(data, identity?, traceId?, cancelToken?)` export | Python's typed `Context.create(...)` is already ergonomic; TS exposes the factory so callers don't have to handcraft the duck-typed `BridgeContext` shape. Related to the `BridgeContext` row above. |
+| **ExecutionRouter cancel name** | `router.cancel(call_id, reason)` | `router.cancel(callId, reason)` | Rust uses `router.cancel_call(call_id, reason)` to avoid colliding with `CancelToken::cancel()` on the dispatched token. The base name differs only in Rust; semantics, return shape, and error mapping are identical. Auditors should classify Rust's `cancel_call` as the canonical name on Rust, not as a missing `cancel` method. |
 
 **Consequences:** Cross-language sync audits should verify **feature parity and behavioral equivalence**, not API shape identity. The sync report should classify these as "intentional" rather than "missing".
 
@@ -859,14 +864,14 @@ class AnnotationMapper:
         """Convert apcore annotations to MCP ToolAnnotations.
 
         Mapping:
-            annotations.readonly      -> ToolAnnotations(read_only_hint=...)
-            annotations.destructive   -> ToolAnnotations(destructive_hint=...)
-            annotations.idempotent    -> ToolAnnotations(idempotent_hint=...)
-            annotations.open_world    -> ToolAnnotations(open_world_hint=...)
+            annotations.readonly      -> ToolAnnotations(readOnlyHint=...)
+            annotations.destructive   -> ToolAnnotations(destructiveHint=...)
+            annotations.idempotent    -> ToolAnnotations(idempotentHint=...)
+            annotations.open_world    -> ToolAnnotations(openWorldHint=...)
 
         If annotations is None, returns ToolAnnotations with MCP defaults:
-            read_only_hint=False, destructive_hint=False,
-            idempotent_hint=False, open_world_hint=True
+            readOnlyHint=False, destructiveHint=False,
+            idempotentHint=False, openWorldHint=True
 
         Args:
             annotations: apcore ModuleAnnotations instance or None.
@@ -2169,7 +2174,7 @@ After generating the standard `[Annotations: ...]` suffix, the mapper checks `an
 
 ### 6.20 Async Task Bridge (F-043)
 
-**Responsibility:** Route async-hinted module invocations to apcore's `AsyncTaskManager` and expose four reserved meta-tools so MCP clients can submit, poll, cancel, and list background tasks. F-042 is reserved for the Extension Bridge and is not covered here.
+**Responsibility:** Route async-hinted module invocations to apcore's `AsyncTaskManager` and expose five reserved meta-tools so MCP clients can submit, poll, cancel, and list background tasks (`__apcore_task_submit` / `__apcore_task_status` / `__apcore_task_cancel` / `__apcore_task_list`) plus dry-run preview state changes via `__apcore_module_preview` (v0.15+, apcore PROTOCOL_SPEC §5.6). F-042 is reserved for the Extension Bridge and is not covered here.
 
 **Placement:** The bridge sits in front of the Execution Router. For each incoming `tools/call`, `ExecutionRouter.handle_call()` consults `AsyncTaskBridge.is_async(descriptor)`; async-hinted modules are handed to `AsyncTaskBridge.submit()` while sync modules follow the existing `Executor.call_async()` path unchanged.
 
@@ -2608,10 +2613,10 @@ ModuleDescriptor                    SchemaConverter.convert_input_schema()
       .readonly = False                |
       .destructive = False             v
       .idempotent = True           ToolAnnotations(
-      .open_world = True               read_only_hint=False,
-                                       destructive_hint=False,
-                                       idempotent_hint=True,
-                                       open_world_hint=True,
+      .open_world = True               readOnlyHint=False,
+                                       destructiveHint=False,
+                                       idempotentHint=True,
+                                       openWorldHint=True,
                                    )
                                        |
                                        v
@@ -2925,10 +2930,10 @@ tests/
 
 **AnnotationMapper (8+ tests):**
 - None annotations -> MCP defaults
-- readonly=True -> read_only_hint=True
-- destructive=True -> destructive_hint=True
-- idempotent=True -> idempotent_hint=True
-- open_world=False -> open_world_hint=False (note: default is True)
+- readonly=True -> readOnlyHint=True
+- destructive=True -> destructiveHint=True
+- idempotent=True -> idempotentHint=True
+- open_world=False -> openWorldHint=False (note: default is True)
 - All annotations set
 - Description suffix with only non-default values
 - Description suffix for None annotations -> empty string
@@ -3102,7 +3107,7 @@ def descriptor_with_refs() -> ModuleDescriptor:
 ```python
 # Profile script for development use
 import tracemalloc
-from apcore_mcp.server.factory import MCPServerFactory
+from apcore_mcp import MCPServerFactory
 # ... setup mock registry with N modules ...
 
 tracemalloc.start()
@@ -3355,7 +3360,7 @@ show_missing = true
 | `mcp.server.lowlevel.NotificationOptions`    | TransportManager  |
 | `mcp.server.models.InitializationOptions`    | TransportManager  |
 | `mcp.types.Tool(name, description, inputSchema, annotations)` | MCPServerFactory |
-| `mcp.types.ToolAnnotations(read_only_hint=, destructive_hint=, idempotent_hint=, open_world_hint=)` | AnnotationMapper |
+| `mcp.types.ToolAnnotations(readOnlyHint=, destructiveHint=, idempotentHint=, openWorldHint=)` | AnnotationMapper |
 | `mcp.types.CallToolResult(content=, isError=)` | ExecutionRouter, ErrorMapper |
 | `mcp.types.TextContent(type="text", text=)`  | ExecutionRouter, ErrorMapper |
 | `mcp.server.stdio.stdio_server()`            | TransportManager  |

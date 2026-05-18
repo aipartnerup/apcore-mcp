@@ -1120,7 +1120,7 @@ The wire format uses camelCase (`retryable`, `aiGuidance`, `userFixable`, `sugge
 
 **Title:** Route async-hinted modules through apcore's AsyncTaskManager and expose `__apcore_task_*` meta-tools
 
-**Description:** Routes apcore modules whose descriptor carries an async hint (`metadata.async == true` or `annotations.extra["mcp_async"] == "true"`) through `AsyncTaskManager.submit()` instead of the synchronous `Executor.call_async()` path. Returns an immediate `{"task_id", "status": "pending"}` envelope and exposes four reserved meta-tools (`__apcore_task_submit`, `__apcore_task_status`, `__apcore_task_cancel`, `__apcore_task_list`) that wrap the manager API. Progress notifications fan out via MCP `notifications/progress` when the caller supplies `_meta.progressToken`. See `docs/features/async-task-bridge.md` for the full spec.
+**Description:** Routes apcore modules whose descriptor carries an async hint (`metadata.async == true` or `annotations.extra["mcp_async"] == "true"`) through `AsyncTaskManager.submit()` instead of the synchronous `Executor.call_async()` path. Returns an immediate `{"task_id", "status": "pending"}` envelope and exposes five reserved meta-tools that wrap the manager API: four task-lifecycle tools (`__apcore_task_submit`, `__apcore_task_status`, `__apcore_task_cancel`, `__apcore_task_list`) plus `__apcore_module_preview` for dry-run preflight via `Executor.validate()` (v0.15+, apcore PROTOCOL_SPEC §5.6). Progress notifications fan out via MCP `notifications/progress` when the caller supplies `_meta.progressToken`. See `docs/features/async-task-bridge.md` for the full spec.
 
 **User Story:** As an AI agent, I want to submit long-running module invocations without blocking the stdio/HTTP transport, then poll for status, cancel, or list pending tasks via dedicated meta-tools.
 
@@ -1131,7 +1131,7 @@ The wire format uses camelCase (`retryable`, `aiGuidance`, `userFixable`, `sugge
 4. `__apcore_task_status(task_id)` returns the projected `TaskInfo` (task_id, module_id, status, timestamps); inlines `result` on `completed`, `error` on `failed`, with redaction applied to result via the registered output schema.
 5. `__apcore_task_cancel(task_id)` calls `AsyncTaskManager.cancel()`; returns `{task_id, cancelled}`.
 6. `__apcore_task_list(status?)` returns `{tasks: [...]}` filtered by optional status enum (rejects unknown filter values).
-7. The four meta-tool names are reserved — `MCPServerFactory.build_tool` rejects any module id starting with `__apcore_`.
+7. The five reserved meta-tool names are gated — `MCPServerFactory.build_tool` rejects any module id starting with `__apcore_`.
 8. Capacity-exceeded errors map to `ASYNC_CAPACITY_EXCEEDED`; missing task_ids map to `ASYNC_TASK_NOT_FOUND`.
 9. Progress fan-out: when `_meta.progressToken` is supplied, terminal-state events fire via `notifications/progress`.
 10. Transport-disconnect cleanup: `cancelSessionTasks(sessionKey)` cancels any tasks bound to a disconnected session.
@@ -1188,6 +1188,98 @@ The wire format uses camelCase (`retryable`, `aiGuidance`, `userFixable`, `sugge
 
 ---
 
+### F-047: Rich Markdown Tool Descriptions (v0.15+)
+
+**Title:** Render `Tool.description` and OpenAI `function.description` as canonical apcore-toolkit Markdown.
+
+**Description:** When `rich_description=True` (Python) / `richDescription: true` (TypeScript) / `MCPServerFactory::with_rich_description(true)` (Rust) is set, `MCPServerFactory.build_tool` and `OpenAIConverter.convert_descriptor` render the tool description as apcore-toolkit Markdown (title, description, parameters table, return-type table, behavior hints, tags, examples) instead of the plain one-line description. LLMs select tools primarily from this field; Markdown packs more decision-relevant signal per token. Falls back to plain text + one-time WARN when apcore-toolkit is not installed.
+
+**User Story:** As an AI agent integrator, I want my tools' descriptions to carry full schema-derived signal (parameters, returns, behavior hints) so the LLM selects the right tool first time, without me having to hand-author Markdown in every module docstring.
+
+**Acceptance Criteria:**
+1. `rich_description` defaults to `False` (backward-compatible).
+2. When enabled and apcore-toolkit is installed (`pip install apcore-mcp[markdown]` / `optionalDependencies` in TS / linked at build time in Rust), `Tool.description` and OpenAI `function.description` are the Markdown output of `apcore_toolkit.format_module(style=Markdown)` (Python+Rust) or the canonical port (TS).
+3. When apcore-toolkit is not installed, the factory falls back to plain text and emits ONE warning per factory instance.
+4. TS callers must `await MCPServerFactory.prepare()` once at startup to prime the lazy Markdown import; Python/Rust expose `prepare()` as a parity no-op.
+5. `embed_annotations` + `rich_description` together append the annotation suffix AFTER the Markdown block, separated by a blank line.
+
+**Priority:** P1
+
+---
+
+### F-048: `__apcore_module_preview` Meta-Tool (v0.15+)
+
+**Title:** Dry-run preflight of `Executor.validate()` via the new reserved meta-tool.
+
+**Description:** Adds `__apcore_module_preview` as the fifth reserved meta-tool (alongside the four `__apcore_task_*` task-lifecycle tools). The handler invokes `Executor.validate(module_id, arguments, context)` and returns the `PreflightResult` envelope `{valid, requires_approval, predicted_changes, checks}` without executing the module. Implements apcore PROTOCOL_SPEC §5.6 (module preview) and §12.8 (preflight surfaces). Preserves `arguments: null` verbatim (no `{}` coercion) so the calling module decides whether null is acceptable.
+
+**User Story:** As an AI orchestrator, I want to ask "what would happen if I called this module with these inputs?" before committing — to surface validation errors, ACL denials, approval requirements, and `Module.preview()` predicted state changes to the user.
+
+**Acceptance Criteria:**
+1. `__apcore_module_preview(module_id, arguments?, version_hint?)` is registered automatically when the async-task bridge is attached.
+2. Reserved `__apcore_` prefix module ids are rejected with `GENERAL_INVALID_INPUT` (matches submit's guard).
+3. `arguments: null` and missing `arguments` are forwarded as null to `executor.validate()` (no `{}` coercion); structurally-wrong shapes (arrays, scalars) are rejected.
+4. When the bridge was constructed without an executor reference, returns `PREVIEW_UNAVAILABLE` envelope instead of raising.
+5. Returns `{module_id, input_schema, description, annotations, arguments, valid, requires_approval, predicted_changes, checks}` on success; passes through the executor's preflight result verbatim.
+
+**Priority:** P1
+
+---
+
+### F-049: Public Markdown Module (v0.15+)
+
+**Title:** First-class `apcore_mcp.markdown` rendering helpers.
+
+**Description:** Exposes the Markdown rendering helpers used internally by F-047 as a public submodule (`apcore_mcp.markdown` / TS `"apcore-mcp"` named exports / Rust `apcore_mcp::markdown`) so callers can render module descriptors to canonical apcore-toolkit Markdown outside the bridge — e.g., for documentation generation or for embedding rendered descriptions in custom UIs.
+
+**User Story:** As a docs generator author, I want to call the same Markdown renderer apcore-mcp uses internally so my generated docs and the bridge's tool descriptions stay in lockstep.
+
+**Acceptance Criteria:**
+1. Public function `render_module_markdown(descriptor) -> str | None` (Python+Rust) / `renderModuleMarkdownSync(descriptor): string | null` (TS) returns the Markdown for a given descriptor; returns `None` / `null` when the toolkit is not installed.
+2. Public availability probe `is_available()` / `isMarkdownAvailable()` returns a memoized `bool`.
+3. TS exposes async primer `primeMarkdownToolkit()` that loads the toolkit dynamically; Python/Rust expose no-op equivalents for cross-SDK parity.
+4. Existing internal callers (factory, converter) route through the public helpers — no duplication.
+
+**Priority:** P2
+
+---
+
+### F-050: `CIRCUIT_BREAKER_OPEN` Error Code (v0.15+)
+
+**Title:** Surface apcore's circuit-breaker state through a dedicated MCP error code.
+
+**Description:** Adds `CIRCUIT_BREAKER_OPEN` to `ERROR_CODES` / `ErrorCodes` / `ApcoreErrorCode` in all three SDKs. `ErrorMapper.to_mcp_error()` recognises `apcore::errors::CircuitBreakerOpenError` (and its TS/Python equivalents) and emits the envelope `{isError: true, errorType: "CIRCUIT_BREAKER_OPEN", retryable: true, aiGuidance: "Upstream circuit is open; retry after backoff."}` so AI clients can implement intelligent backoff.
+
+**User Story:** As an AI orchestrator hitting a flaky upstream, I want a distinct retryable error code (not the generic GENERAL_INTERNAL_ERROR) so my retry logic knows to wait rather than give up.
+
+**Acceptance Criteria:**
+1. `CIRCUIT_BREAKER_OPEN` is exported from the constants surface in Python (`ERROR_CODES["CIRCUIT_BREAKER_OPEN"]`), TypeScript (`ErrorCodes.CIRCUIT_BREAKER_OPEN`), and Rust (`ErrorCode::CircuitBreakerOpen`).
+2. Wire string is `"CIRCUIT_BREAKER_OPEN"` across all SDKs.
+3. `ErrorMapper.to_mcp_error()` returns `retryable: true` and an `aiGuidance` field when the upstream error indicates an open circuit.
+4. Regression tests assert the envelope is byte-identical across the three SDKs for the same upstream error.
+
+**Priority:** P2
+
+---
+
+### F-051: Async Rust `AsyncTaskBridge` Lifecycle (v0.15+)
+
+**Title:** Rust `AsyncTaskBridge::{submit, cancel, cancel_session_tasks, handle_meta_tool, shutdown}` become `async fn`.
+
+**Description:** Aligns Rust with the Python+TS async surfaces by making the bridge's lifecycle methods `async fn`. Propagates upstream apcore 0.20+ async signatures on the `AsyncTaskManager` trait. Sync transport-layer cancel handlers wrap the cancel call as `tokio::spawn` fire-and-forget so transport-disconnect paths don't need to await.
+
+**User Story:** As a Rust embedder, I want the bridge's lifecycle to compose naturally with my Tokio runtime rather than blocking on internal `block_on` calls.
+
+**Acceptance Criteria:**
+1. The five listed methods are `async fn` returning `Result<...>` (no internal `block_on`).
+2. Transport-disconnect cancellation paths use `tokio::spawn` to fire `cancel_session_tasks` without awaiting.
+3. Cross-SDK equivalence preserved: Python+TS callers see no behavioural change.
+4. CHANGELOG documents this as a breaking change for downstream Rust embedders who were calling these methods synchronously.
+
+**Priority:** P1
+
+---
+
 **Feature Count Summary:**
 
 | Priority | Count | Features |
@@ -1195,7 +1287,19 @@ The wire format uses camelCase (`retryable`, `aiGuidance`, `userFixable`, `sugge
 | P0       | 9     | F-001 through F-009 |
 | P1       | 15    | F-010 through F-016, F-032, F-036, F-038, F-042, F-043, F-044, F-046 |
 | P2       | 22    | F-017 through F-031, F-033 through F-035, F-037, F-039 through F-041, F-045 |
-| **Total**| **46**|                      |
+| **Baseline (≤ v0.14.0)** | **46** | F-001 through F-046 |
+
+**v0.15.0 additions** (additive to the baseline, no F-ID renumbering):
+
+| F-ID | Priority | Title |
+|------|----------|-------|
+| F-047 | P1 | Rich Markdown tool descriptions (`rich_description` / `richDescription` / `with_rich_description`) backed by apcore-toolkit ≥ 0.6 |
+| F-048 | P1 | `__apcore_module_preview` meta-tool — driving `Executor.validate()` for dry-run preflight per apcore PROTOCOL_SPEC §5.6 |
+| F-049 | P2 | Public `markdown` module — render helpers (`render_module_markdown` / `renderModuleMarkdownSync` / `render_module_markdown`) + availability probe + TS toolkit primer |
+| F-050 | P2 | `CIRCUIT_BREAKER_OPEN` error code — surfaced from upstream apcore circuit-breaker middleware with `retryable: true` + AI guidance suffix |
+| F-051 | P1 | Rust `AsyncTaskBridge` lifecycle methods (`submit`, `cancel`, `cancel_session_tasks`, `handle_meta_tool`, `shutdown`) become `async fn` — propagates upstream apcore 0.20+ async signatures |
+
+| **Total (v0.15.0)** | **51** | F-001 through F-051 |
 
 ---
 

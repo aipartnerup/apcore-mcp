@@ -25,7 +25,7 @@ The Async Task Bridge exposes apcore's `AsyncTaskManager` (see apcore `docs/feat
 ## Core Responsibilities
 
 1. **Async Dispatcher** - Inspect the resolved `ModuleDescriptor`; if it carries an async hint, call `AsyncTaskManager.submit(module_id, inputs, context)` and return the `task_id` envelope. Otherwise, delegate unchanged to the Execution Router.
-2. **Meta-Tool Surface** - Register four reserved tool names (`__apcore_task_*`) with the MCP server so clients can submit, query, cancel, and list tasks without calling the manager directly.
+2. **Meta-Tool Surface** - Register five reserved tool names with the MCP server: the four `__apcore_task_*` task-lifecycle tools (submit / status / cancel / list) so clients can drive background tasks without calling the manager directly, plus `__apcore_module_preview` (v0.15+, apcore PROTOCOL_SPEC §5.6) for dry-run preflight against `Executor.validate()`.
 3. **Progress Fan-Out** - Subscribe to module-emitted progress events on the execution context and relay them as MCP `notifications/progress` with the task's `progressToken` (when the caller supplied one via `_meta.progressToken`).
 4. **Result Retrieval** - On `__apcore_task_status`, if the task is `completed`, include the (redacted, JSON-serialised) result inline; if `failed`, include the error message mapped through the Error Mapper.
 5. **Lifecycle Guardrails** - Reject submission with a protocol error when the manager's `max_tasks` cap is reached; surface capacity errors through the Error Mapper.

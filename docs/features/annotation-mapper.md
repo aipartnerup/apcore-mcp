@@ -73,7 +73,7 @@ All four fields are optional: when absent or `None` on the descriptor, the mappe
 ## Constraints
 
 - **Case Consistency**: Output labels in suffixes must follow a consistent, parseable naming convention.
-- **Protocol Defaults**: When apcore annotations are `None`, the mapper must revert to the safe defaults specified by the protocol (e.g., `read_only_hint=False`, `open_world_hint=True`).
+- **Protocol Defaults**: When apcore annotations are `None`, the mapper must revert to the safe defaults specified by the protocol (e.g., `readOnlyHint=False`, `openWorldHint=True`).
 
 ## Error Handling
 

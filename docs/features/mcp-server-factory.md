@@ -278,7 +278,7 @@ The three Contract blocks below define each step. For HTTP transport, `build_ini
 - server: Server, required — MCP low-level Server instance
 - tools: list[Tool], required — MCP Tool objects to expose via list_tools
 - router: Any, required (duck-typed) — must expose `async handle_call(name, arguments, extra?) -> tuple`
-- async_bridge: AsyncTaskBridge | None, optional — when provided, four `__apcore_task_*` meta-tools are appended to tools list and async-hinted modules are routed through the bridge
+- async_bridge: AsyncTaskBridge | None, optional — when provided, five reserved meta-tools are appended to the tools list (four `__apcore_task_*` task-lifecycle tools plus `__apcore_module_preview` for executor-validate preview, v0.15+) and async-hinted modules are routed through the bridge
 - descriptor_lookup: callable | None, optional — used to detect async-hinted modules; required when async_bridge is set for async routing to work
 
 ### Errors
