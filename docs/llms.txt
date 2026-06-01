@@ -33,6 +33,9 @@ apcore-mcp turns apcore modules into MCP tools (and OpenAI-compatible tool schem
 - [apcore](https://apcore.aiperceivable.com/): The core schema-enforced module standard this bridge exposes.
 - [apcore-a2a](https://apcore-a2a.aiperceivable.com/): Agent-to-Agent (A2A) protocol adapter for apcore.
 - [apcore-cli](https://apcore-cli.aiperceivable.com/): Expose apcore modules as command-line tools.
+- [apcore-toolkit](https://apcore-toolkit.aiperceivable.com/): Shared scanner, schema extraction, and output toolkit for adapters.
+- [apflow](https://apflow.aiperceivable.com/): Orchestration layer for long-running, multi-step agent task workflows.
+- [AI Perceivable (ecosystem hub)](https://aiperceivable.com/): Overview of the full ecosystem — apcore (perception), apflow (orchestration), and adapters.
 
 ## Key Facts
 
