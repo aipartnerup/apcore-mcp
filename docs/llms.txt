@@ -1,0 +1,43 @@
+# apcore-mcp
+
+> Automatic MCP server and OpenAI tools bridge for apcore — exposes apcore modules to AI agents over the Model Context Protocol with zero code changes.
+
+apcore-mcp turns apcore modules into MCP tools (and OpenAI-compatible tool schemas) automatically: it converts schemas, maps behavior annotations, routes execution back to apcore, and serves it all as an MCP server. It can also aggregate upstream MCP servers as a gateway.
+
+## Start Here
+
+- [Home](https://apcore-mcp.aiperceivable.com/): What apcore-mcp does and how it bridges apcore modules to MCP and OpenAI tools.
+- [Getting Started](https://apcore-mcp.aiperceivable.com/getting-started/): Stand up an MCP server in front of your apcore modules with no code changes.
+- [Configuration](https://apcore-mcp.aiperceivable.com/configuration/): Configure transports, exposure, authentication, and bridge behavior.
+
+## Features
+
+- [Features Overview](https://apcore-mcp.aiperceivable.com/features/overview/): Map of the bridge components from schema conversion to transport.
+- [Schema Converter](https://apcore-mcp.aiperceivable.com/features/schema-converter/): Converts apcore module schemas into MCP tool input schemas.
+- [Annotation Mapper](https://apcore-mcp.aiperceivable.com/features/annotation-mapper/): Maps apcore behavior annotations onto MCP tool metadata.
+- [Execution Router](https://apcore-mcp.aiperceivable.com/features/execution-router/): Routes MCP tool calls back to the apcore executor.
+- [MCP Server Factory](https://apcore-mcp.aiperceivable.com/features/mcp-server-factory/): Builds a ready-to-run MCP server from registered apcore modules.
+- [OpenAI Converter](https://apcore-mcp.aiperceivable.com/features/openai-converter/): Emits OpenAI-compatible tool/function schemas from the same modules.
+- [Transport Manager](https://apcore-mcp.aiperceivable.com/features/transport-manager/): Manages stdio/HTTP transports for the MCP server.
+- [JWT Authenticator](https://apcore-mcp.aiperceivable.com/features/jwt-authenticator/): Authenticates MCP callers via JWT at the bridge layer.
+- [Explorer UI](https://apcore-mcp.aiperceivable.com/features/explorer-ui/): Browser UI to inspect and test exposed MCP tools.
+
+## Specifications
+
+- [Product Requirements](https://apcore-mcp.aiperceivable.com/prd-apcore-mcp/): Goals, scope, and requirements for the MCP bridge.
+- [Software Requirements](https://apcore-mcp.aiperceivable.com/srs-apcore-mcp/): Detailed functional and non-functional requirements.
+- [Technical Design](https://apcore-mcp.aiperceivable.com/tech-design-apcore-mcp/): Architecture and component design of the bridge.
+
+## Ecosystem
+
+- [apcore](https://apcore.aiperceivable.com/): The core schema-enforced module standard this bridge exposes.
+- [apcore-a2a](https://apcore-a2a.aiperceivable.com/): Agent-to-Agent (A2A) protocol adapter for apcore.
+- [apcore-cli](https://apcore-cli.aiperceivable.com/): Expose apcore modules as command-line tools.
+
+## Key Facts
+
+- Bridges apcore modules to MCP (Model Context Protocol) and OpenAI tools automatically.
+- Zero code changes to existing apcore modules.
+- Can act as an MCP gateway aggregating upstream MCP servers.
+- Supports JWT auth, multiple transports, and an Explorer UI.
+- Open source. Source: https://github.com/aiperceivable/apcore-mcp
