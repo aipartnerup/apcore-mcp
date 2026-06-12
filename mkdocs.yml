@@ -68,6 +68,7 @@ nav:
       - Registry Listener: features/registry-listener.md
       - JWT Authenticator: features/jwt-authenticator.md
       - Approval Handler: features/approval-handler.md
+      - Approval Handler (Phase B): features/approval-phase-b.md
       - Async Task Bridge: features/async-task-bridge.md
       - Explorer UI: features/explorer-ui.md
       - Markdown: features/markdown.md
