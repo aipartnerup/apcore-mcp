@@ -1,3 +1,7 @@
+---
+description: "Technical Design Document for apcore-mcp: architecture and component design for bridging apcore Registry metadata into MCP servers and OpenAI Function Calling tools across Python, TS, and Rust."
+---
+
 # Technical Design Document: apcore-mcp
 
 | Field       | Value                                                                    |

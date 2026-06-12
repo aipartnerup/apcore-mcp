@@ -1,3 +1,7 @@
+---
+description: "Product Requirements Document for apcore-mcp, the adapter that auto-bridges any apcore Registry into MCP servers and OpenAI tools; covers background, goals, features, and business metrics."
+---
+
 # Product Requirements Document: apcore-mcp
 
 | Field       | Value                                                        |

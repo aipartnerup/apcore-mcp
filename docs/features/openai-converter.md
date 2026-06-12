@@ -1,3 +1,7 @@
+---
+description: "OpenAI Converter feature spec: transforms apcore modules into ChatCompletionTool definitions with dot-to-hyphen ID normalization, optional strict-mode schemas, and annotation-enhanced descriptions."
+---
+
 # OpenAI Converter
 
 > Feature spec for code-forge implementation planning.

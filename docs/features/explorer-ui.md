@@ -1,3 +1,7 @@
+---
+description: "Explorer UI feature spec: optional self-contained web dashboard (default /explorer) for browsing, inspecting, and test-invoking apcore-mcp tools over HTTP transports during development."
+---
+
 # Explorer UI
 
 > Feature spec for code-forge implementation planning.

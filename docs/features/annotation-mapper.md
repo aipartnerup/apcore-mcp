@@ -1,3 +1,7 @@
+---
+description: "Annotation Mapper feature spec: maps apcore behavioral annotations (destructive, readonly, requires_approval) to MCP ToolAnnotations hints and OpenAI description suffixes."
+---
+
 # Annotation Mapper
 
 > Feature spec for code-forge implementation planning.

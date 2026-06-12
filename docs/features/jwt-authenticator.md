@@ -1,3 +1,7 @@
+---
+description: "JWT Authenticator feature spec: validates RS256/HS256 bearer tokens via ASGI AuthMiddleware, maps claims to apcore Identity for ACL, supports permissive mode and exempt paths on HTTP transports."
+---
+
 # JWT Authenticator
 
 > Feature spec for code-forge implementation planning.

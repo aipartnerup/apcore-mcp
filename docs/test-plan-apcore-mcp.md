@@ -1,3 +1,7 @@
+---
+description: "Test plan and test cases for apcore-mcp covering 46 PRD features across unit, integration, e2e, performance, and security levels, with TDD-first pytest coverage matrix and noted coverage gaps."
+---
+
 # Test Plan & Test Cases: apcore-mcp
 
 | Field       | Value                                                        |

@@ -6,6 +6,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.16.0] - 2026-06-12
+
+Cross-SDK spec release adding the **Approval Phase B** storage-backed approval handler and a full cross-language sync pass covering all 16 MCP feature modules.
+
+### Added
+
+- **Approval Phase B** (`docs/features/approval-phase-b.md`) — `StorageBackedApprovalHandler` implements long-lived, out-of-band human approval via a persistent `ApprovalStore`. Complements Phase A (`ElicitationApprovalHandler`) for flows where the approver is not present at the terminal (automated pipelines, mobile approvals, team workflows). Key additions across all three SDKs:
+  - `StorageBackedApprovalHandler(store, notify_callback?)` — always returns `ApprovalResult(status="pending")` and fires the notify callback fire-and-forget.
+  - `ApprovalStore` protocol / trait / interface — `save_pending`, `get_result`, `resolve`.
+  - `InMemoryApprovalStore` — default in-process store with separate `resolved_ttl` / `pending_ttl` / `sweep_interval` / `max_records` knobs.
+  - `__apcore_approval_check` meta-tool — sixth reserved meta-tool alongside the five `__apcore_task_*` / preview tools. Lets the AI agent poll for out-of-band approval without a full module call.
+  - `APCoreMCP` gains `approval_store` / `approvalStore` constructor parameter (Python, TypeScript) that automatically wraps the store in a `StorageBackedApprovalHandler` and registers `__apcore_approval_check`. See `docs/features/approval-phase-b.md`.
+
+### Cross-language sync — full-scope mcp round (2026-06-12)
+
+Full pass across all 16 feature-spec modules against `apcore-mcp-{python,rust,typescript}` v0.16.0. See `sync-report-apcore-mcp-2026-06-12.md` for the full checklist.
+
+**Critical findings (implementation gaps against spec):**
+
+- **A-001 (Rust) — OC-5 rename not applied**: `convert_registry` in `OpenAIConverter` still takes `&serde_json::Value` (old JSON-snapshot path). The `&Registry` canonical variant was added as `convert_registry_apcore` — wrong name. CHANGELOG 0.14.0 migration said `convert_registry` → Registry and `convert_registry_json` → old snapshot; that rename was not executed. Rust callers following the migration guide call `convert_registry(&registry)` and get a type error. Fix: rename `convert_registry_apcore` → `convert_registry`; rename old `convert_registry` → `convert_registry_json`.
+- **A-002 (Rust) — `APCoreMCPBuilder` missing `approval_store()` / `approval_notify()`**: `StorageBackedApprovalHandler`, `InMemoryApprovalStore`, and `ApprovalStore` are all exported from `apcore-mcp-rust`, but the builder wires only `approval_handler(Arc<dyn ApprovalHandler>)`. Python/TS accept `approval_store=` / `approvalStore=` directly. The usage example in `approval-phase-b.md` for Rust does not compile. Fix: add `approval_store(Arc<dyn ApprovalStore>)` and `approval_notify(callback)` builder methods.
+- **A-003 (Python) — `McpErrorFormatter` alias never exported (EM-1 regression)**: CHANGELOG 0.14.0 EM-1 documents "both names exported from `apcore_mcp` and `apcore_mcp.adapters`" as shipped. The class in `formatter.py` is named `MCPErrorFormatter` only; no `McpErrorFormatter = MCPErrorFormatter` alias exists. `from apcore_mcp import McpErrorFormatter` raises `ImportError` in Python at v0.16.0. Fix: add alias in `formatter.py` and both `__init__.py` export lists.
+
+**Warning findings:**
+
+- **A-004 (Rust) — `RegistryListener.start()` takes `(registry, factory)`**: spec contract says "No parameters". Python/TS take the registry and factory in the constructor then call `start()` with no args; Rust has `new()` with no args and `start(registry, factory)`. Cross-language documentation and usage examples are misaligned.
+- **A-005 (Rust) — `AsyncTaskBridge` constructor takes `executor`, not `manager`**: spec `__init__` contract lists `manager: AsyncTaskManager` as the required input. Rust `new(executor)` constructs the manager internally. Documenting this as a Rust-specific structural idiom is tracked; spec contract table needs updating.
+- **A-006 (Rust) — `is_async_module` decomposed signature**: spec says `is_async_module(descriptor)` (one duck-typed param); Rust exposes `is_async_module(metadata, annotations_extra)` (two params). `is_async_module_descriptor(descriptor)` also exists as a one-param alternative. Spec should document the two forms or consolidate.
+
+**Doc consistency (Phase B):**
+
+- **B-001**: `approval-phase-b.md` not listed in `mkdocs.yml` navigation — unreachable from the published docs site.
+- **B-002**: `approval-phase-b.md` claims Rust builder supports `approval_store` (snake_case) — it doesn't pending A-002.
+- **B-003**: `overview.md` feature table does not list Approval Phase B or `__apcore_approval_check`.
+- **B-004**: CHANGELOG 0.14.0 EM-1 entry claims Python `McpErrorFormatter` is exported — this is inaccurate; see A-003.
+
+#### Deferred to a future release
+
+- **A-001 fix (Rust)** — `convert_registry` rename; `convert_registry_json` preservation.
+- **A-002 fix (Rust)** — `APCoreMCPBuilder::approval_store` / `approval_notify` builder methods.
+- **A-003 fix (Python)** — `McpErrorFormatter` alias and `__all__` update.
+- **B-001 fix** — add `approval-phase-b.md` to `mkdocs.yml` nav.
+
+---
+
 ## [0.15.0] - 2026-05-14
 
 Cross-SDK release leveraging **apcore 0.21.0 + apcore-toolkit 0.6.0**.

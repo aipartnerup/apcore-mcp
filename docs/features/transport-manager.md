@@ -1,3 +1,7 @@
+---
+description: "Transport Manager feature spec: configures and runs stdio, streamable-http, and deprecated SSE transports, managing host/port binding plus graceful SIGINT/SIGTERM server lifecycle shutdown."
+---
+
 # Transport Manager
 
 > Feature spec for code-forge implementation planning.

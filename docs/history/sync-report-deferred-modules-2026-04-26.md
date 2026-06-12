@@ -1,3 +1,7 @@
+---
+description: "2026-04-26 cross-language sync report on 10 deferred apcore-mcp modules, listing 116 Python/TS/Rust parity findings (24 critical/high) across annotation-mapper, schema-converter, transport-manager."
+---
+
 # Sync Report — Deferred Deep-Chain Modules (10/10)
 
 **Date:** 2026-04-26  

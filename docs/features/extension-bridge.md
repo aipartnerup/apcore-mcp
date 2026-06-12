@@ -1,3 +1,7 @@
+---
+description: "Extension Bridge feature spec: wires apcore ExtensionManager into the MCP factory/Executor and resolves adapter-hook precedence (schema_converter, annotation_mapper, error_mapper)."
+---
+
 # Extension Bridge
 
 > Feature spec for code-forge implementation planning.

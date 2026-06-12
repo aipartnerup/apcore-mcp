@@ -1,3 +1,7 @@
+---
+description: "Markdown Helpers feature spec: shared layer rendering rich Tool/function descriptions via apcore-toolkit render_module_markdown behind the rich_description option, with silent fallback if absent."
+---
+
 # Markdown Helpers
 
 > Feature spec for code-forge implementation planning.

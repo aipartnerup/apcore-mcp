@@ -1,3 +1,7 @@
+---
+description: "Schema Converter feature spec: inlines $ref/$defs from apcore Pydantic JSON Schemas into self-contained MCP inputSchema/OpenAI parameters with root object normalization and 32-level cycle detection."
+---
+
 # Schema Converter
 
 > Feature spec for code-forge implementation planning.

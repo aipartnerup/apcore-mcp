@@ -1,3 +1,7 @@
+---
+description: "Approval Handler feature spec: ElicitationApprovalHandler implements human-in-the-loop confirmation via MCP elicitation, mapping user accept/reject responses to apcore ApprovalResult."
+---
+
 # Approval Handler
 
 > Feature spec for code-forge implementation planning.

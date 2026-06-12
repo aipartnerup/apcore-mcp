@@ -1,3 +1,7 @@
+---
+description: "Complete apcore-mcp configuration reference covering CLI arguments (--extensions-dir, --transport, --jwt-secret, --explorer) and the APCoreMCP programmatic API options."
+---
+
 # Configuration Reference
 
 This page provides a detailed reference for all configuration options available in **apcore-mcp**, whether you are using the CLI or the programmatic API.

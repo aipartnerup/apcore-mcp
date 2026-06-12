@@ -1,3 +1,7 @@
+---
+description: "Getting-started guide for apcore-mcp: install in Python/TypeScript/Rust and launch an MCP server from an extensions directory via zero-code CLI or programmatic API."
+---
+
 # Getting Started
 
 This guide covers how to set up and use **apcore-mcp** to expose your apcore-based modules to AI agents as MCP tools or OpenAI tools.

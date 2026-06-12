@@ -1,3 +1,7 @@
+---
+description: "MCP Server Factory feature spec: builds the low-level MCP Server from an apcore Registry, transforming ModuleDescriptors into Tool objects and registering list_tools/call_tool handlers."
+---
+
 # MCP Server Factory
 
 > Feature spec for code-forge implementation planning.

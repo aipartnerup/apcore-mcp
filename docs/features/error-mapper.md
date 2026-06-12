@@ -1,3 +1,7 @@
+---
+description: "Error Mapper feature spec: translates apcore ModuleError subclasses (validation, ACL, timeout) into MCP CallToolResult errors with AI guidance metadata and sensitive-detail redaction."
+---
+
 # Error Mapper
 
 > Feature spec for code-forge implementation planning.

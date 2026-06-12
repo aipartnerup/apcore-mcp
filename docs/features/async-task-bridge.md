@@ -1,3 +1,7 @@
+---
+description: "Async Task Bridge feature spec: routes async-hinted modules to apcore AsyncTaskManager.submit() and exposes __apcore_task_* meta-tools plus MCP progress notifications for background tasks."
+---
+
 # Async Task Bridge
 
 > Feature spec for code-forge implementation planning.

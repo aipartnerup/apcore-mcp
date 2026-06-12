@@ -1,3 +1,7 @@
+---
+description: "IEEE 830 Software Requirements Specification for apcore-mcp: functional/non-functional requirements (FR/NFR) and revision history spanning JWT auth, approval, async tasks, and extension bridge."
+---
+
 # Software Requirements Specification: apcore-mcp
 
 | Field       | Value                                                                    |

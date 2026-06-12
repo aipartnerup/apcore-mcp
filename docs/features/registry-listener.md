@@ -1,3 +1,7 @@
+---
+description: "Registry Listener feature spec: hot-reloads MCP tools by monitoring apcore Registry register/unregister events and emitting notifications/tools/list_changed with thread-safe debouncing."
+---
+
 # Registry Listener
 
 > Feature spec for code-forge implementation planning.

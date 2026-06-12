@@ -1,3 +1,7 @@
+---
+description: "Execution Router feature spec: central dispatcher routing MCP tool calls through apcore Executor.call_async() with output JSON serialization, sensitive-field redaction, and preflight validation."
+---
+
 # Execution Router
 
 > Feature spec for code-forge implementation planning.

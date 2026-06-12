@@ -1,3 +1,7 @@
+---
+description: "Cross-language standard mandating the 5 runnable demo modules (text_echo, math_calc, greeting, convert_temperature, word_count) every apcore-mcp-{lang} examples/ directory must ship."
+---
+
 # Examples Specification: apcore-mcp Cross-Language Standard
 
 | Field   | Value                          |
