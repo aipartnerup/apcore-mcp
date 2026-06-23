@@ -6,6 +6,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.17.0] - 2026-06-23
+
+Cross-SDK maintenance release resolving an extended audit of the serve/embed
+entry points and the Phase B approval chain, and lifting all three SDKs onto
+apcore 0.25 / apcore-toolkit 0.9.1. Released as `apcore-mcp-{python,rust,typescript}` v0.17.0.
+
+### Fixed — cross-SDK contract
+
+- **`serve()` / `async_serve()` now expose the Phase B approval inputs**
+  (`approval_store` / `approval_notify` in Python/Rust, `approvalStore` /
+  `approvalNotify` in TypeScript) in all three SDKs. Previously these were only
+  reachable by constructing `APCoreMCP` directly, so the documented Phase B flow
+  could not be driven from the top-level entry point.
+- **Rust Phase B approval is now actually wired end-to-end.** In 0.16.x the Rust
+  `StorageBackedApprovalHandler` was stored but never dispatched, the
+  `__apcore_approval_check` meta-tool was never advertised, and the TTL sweep
+  never ran — so the Phase B contract in `docs/features/approval-phase-b.md` was
+  effectively unimplemented on Rust despite the A-002 builder methods existing.
+  It is now live: bridge dispatch, meta-tool advertisement, and sweep all run.
+- **Framework-integration server parity.** The non-blocking embeddable server
+  (`MCPServer` in Python/Rust) now exposes the same capability surface as the
+  blocking `serve()` — output formatter, strategy, observability, output
+  redaction, trace, explorer branding, approval, middleware/ACL, and dynamic
+  registration. The Rust `MCPServer::start()` and `async_serve()` paths now
+  actually register handlers and serve `/mcp` (previously `start()` only awaited
+  shutdown and `async_serve()` returned a Router with no `/mcp` route).
+
+### Changed
+
+- All three SDKs raised their dependency floors to **apcore 0.25** /
+  **apcore-toolkit 0.9.1** (drop-in; no consumed API changed). The Rust upgrade
+  was unblocked by apcore-toolkit 0.9.1 lifting its own `apcore` floor to 0.25.
+
+### Known limitations (Rust)
+
+- `strategy` overrides apply on the trace execution path only; the non-trace
+  `call()` path still runs the executor's own strategy.
+- `BackendSource::ExtensionsDir` cannot honor runtime directory discovery through
+  apcore's public API and builds an empty registry with a warning;
+  `BackendSource::Registry` is fully supported.
+
+
 ## [0.16.0] - 2026-06-12
 
 Cross-SDK spec release adding the **Approval Phase B** storage-backed approval handler and a full cross-language sync pass covering all 16 MCP feature modules.
