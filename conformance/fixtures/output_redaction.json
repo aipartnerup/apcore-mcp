@@ -46,7 +46,12 @@
       "id": "upstream_key_name_heuristic",
       "severity": "security_relevant",
       "status": "cross_language_divergence",
-      "description": "The three upstream apcore libraries disagree on whether a secret-sounding key name is redacted when the schema does not mark it. Given output {\"token\": \"...\"} and an empty schema: apcore (Python) masks it via its sensitive-segment list (token/secret/key/password/auth/credential); apcore-rust masks only keys prefixed `_secret_` (executor.rs redact_secret_prefix); apcore-js does not mask it at all. The same module therefore leaks a token through the Rust and TypeScript bridges and not through the Python one. The bridges only forward to their upstream, so this must be settled in apcore, not here. Not pinned by a test case, because any expectation would encode one language's behaviour as correct."
+      "description": "The three upstream apcore libraries disagree on whether a secret-sounding key name is redacted when the schema does not mark it. Measured, not inferred, in all three: given {\"token\": \"...\"} and an empty schema, apcore (Python) masks the value via its sensitive-segment list, while apcore-rust and apcore-js leave it alone; all three do mask a `_secret_`-prefixed key, and none touch an unsuggestive one. The same module therefore leaks a token through the Rust and TypeScript bridges and not through the Python one. The bridges only forward to their upstream, so this must be settled in apcore, not here. Deliberately not pinned by a shared test case: any expectation would declare one language's behaviour correct. Each bridge instead measures its own upstream locally — Rust at router.rs `upstream_redaction_key_name_behaviour_is_measured_not_assumed`, which fails if upstream converges and this gap needs revisiting.",
+      "measured": {
+        "apcore_python": "masks `token` with an empty schema",
+        "apcore_rust": "does not mask `token`; masks `_secret_` prefix only",
+        "apcore_js": "does not mask `token`"
+      }
     },
     {
       "id": "f038_criterion_6_wording",
