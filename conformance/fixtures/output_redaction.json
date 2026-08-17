@@ -1,0 +1,63 @@
+{
+  "description": "F-038 tool output redaction, applied by ExecutionRouter before serialization. Values of fields marked x-sensitive: true in the module output schema are replaced with ***REDACTED***; everything else passes through unchanged.",
+  "entry_point": "ExecutionRouter output redaction (apcore redact_sensitive)",
+  "spec": "prd-apcore-mcp.md#F-038",
+  "test_cases": [
+    {
+      "id": "redacted_output_sensitive_field",
+      "description": "A token marked x-sensitive is masked; a sibling field without the marker is untouched.",
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "x-sensitive": true
+          },
+          "expires_at": {
+            "type": "string"
+          }
+        }
+      },
+      "output": {
+        "token": "secret-jwt-token-123",
+        "expires_at": "2026-04-06T12:00:00Z"
+      },
+      "expected_redacted_output": {
+        "token": "***REDACTED***",
+        "expires_at": "2026-04-06T12:00:00Z"
+      }
+    },
+    {
+      "id": "empty_schema_leaves_unmarked_fields_alone",
+      "description": "With no schema to match against, fields the schema never marked are returned untouched. Deliberately uses only names that carry no secret connotation: the three upstream apcore implementations disagree on key-name heuristics (see known_gaps#upstream_key_name_heuristic), and this case pins the part they do agree on.",
+      "output_schema": {},
+      "output": {
+        "expires_at": "2026-04-06T12:00:00Z",
+        "harmless": "public-value"
+      },
+      "expected_redacted_output": {
+        "expires_at": "2026-04-06T12:00:00Z",
+        "harmless": "public-value"
+      }
+    }
+  ],
+  "known_gaps": [
+    {
+      "id": "upstream_key_name_heuristic",
+      "severity": "security_relevant",
+      "status": "cross_language_divergence",
+      "description": "The three upstream apcore libraries disagree on whether a secret-sounding key name is redacted when the schema does not mark it. Given output {\"token\": \"...\"} and an empty schema: apcore (Python) masks it via its sensitive-segment list (token/secret/key/password/auth/credential); apcore-rust masks only keys prefixed `_secret_` (executor.rs redact_secret_prefix); apcore-js does not mask it at all. The same module therefore leaks a token through the Rust and TypeScript bridges and not through the Python one. The bridges only forward to their upstream, so this must be settled in apcore, not here. Not pinned by a test case, because any expectation would encode one language's behaviour as correct."
+    },
+    {
+      "id": "f038_criterion_6_wording",
+      "spec": "prd-apcore-mcp.md#F-038",
+      "status": "spec_wording_lags_implementation",
+      "description": "F-038 acceptance criterion 6 says an empty output_schema performs no redaction. At least apcore (Python) still masks by key name with no schema at all. The criterion should be narrowed to 'no schema-driven redaction' once the divergence above is resolved."
+    },
+    {
+      "id": "rust_driver_missing",
+      "status": "driver_gap",
+      "description": "Python and TypeScript drive this fixture; Rust does not yet. ExecutionRouter::redact_output is private, so an integration test under tests/ cannot reach it. A Rust driver needs either a pub(crate) seam or the case moved into router.rs' unit tests."
+    }
+  ]
+}

@@ -1,0 +1,132 @@
+{
+  "description": "apcore Module -> OpenAI function definition, as built by OpenAIConverter.convert_descriptor(). This is where dot-to-hyphen normalization, x-llm-description promotion and x- extension stripping live: OpenAI function names must match ^[a-zA-Z0-9_-]+$, so the module id is normalized, and the strict conversion rewrites the schema. The MCP path does none of this (see tool_mapping.json).",
+  "entry_point": "OpenAIConverter.convert_descriptor(descriptor, embed_annotations, strict)",
+  "spec": "srs-apcore-mcp.md#7.2",
+  "assertion_note": "Field-level assertions rather than a whole-object comparison: the three bridges are known to differ in how they join annotation sections into the description, and pinning that byte-for-byte would assert a formatting accident rather than the mapping rule.",
+  "test_cases": [
+    {
+      "id": "module_id_is_normalized_to_a_function_name",
+      "description": "Dots become hyphens because OpenAI function names may not contain dots. This is the normalization SRS 1560 reserves hyphens for.",
+      "options": {
+        "strict": false
+      },
+      "input_module": {
+        "module_id": "executor.email.send_email",
+        "description": "Send an email via SMTP",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "to": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "to"
+          ]
+        }
+      },
+      "expected_function_name": "executor-email-send_email"
+    },
+    {
+      "id": "llm_description_priority",
+      "description": "Under strict conversion, x-llm-description replaces description so the model reads the AI-specific text.",
+      "options": {
+        "strict": true
+      },
+      "input_module": {
+        "module_id": "auth.login",
+        "description": "Human description",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "token": {
+              "type": "string",
+              "description": "Short desc",
+              "x-llm-description": "Long AI-specific description of the token"
+            }
+          }
+        }
+      },
+      "expected_function_name": "auth-login",
+      "expected_property_description": {
+        "property": "token",
+        "value": "Long AI-specific description of the token"
+      },
+      "expected_absent_property_keys": [
+        "x-llm-description"
+      ]
+    },
+    {
+      "id": "strip_x_extensions",
+      "description": "Under strict conversion, x- vendor extensions are removed so no internal metadata reaches the model.",
+      "options": {
+        "strict": true
+      },
+      "input_module": {
+        "module_id": "data.query",
+        "description": "",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "sql": {
+              "type": "string",
+              "x-sensitive": true,
+              "x-internal-flag": "secret"
+            }
+          }
+        }
+      },
+      "expected_function_name": "data-query",
+      "expected_absent_property_keys": [
+        "x-sensitive",
+        "x-internal-flag"
+      ],
+      "expected_property_of": "sql"
+    },
+    {
+      "id": "mcp_prefix_reaches_the_description",
+      "description": "F-041: mcp_-prefixed keys from annotations.extra are surfaced with the prefix stripped; other extra keys are not. Substring assertions, because the three bridges join the sections differently.",
+      "options": {
+        "strict": false,
+        "embed_annotations": true
+      },
+      "input_module": {
+        "module_id": "image.resize",
+        "description": "Resize an image",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "width": {
+              "type": "integer"
+            }
+          }
+        },
+        "annotations": {
+          "readonly": false,
+          "extra": {
+            "mcp_category": "image",
+            "mcp_cost": "high",
+            "internal_flag": "ignored"
+          }
+        }
+      },
+      "expected_function_name": "image-resize",
+      "expected_description_contains": [
+        "category: image",
+        "cost: high"
+      ],
+      "expected_description_not_contains": [
+        "internal_flag",
+        "ignored",
+        "mcp_category"
+      ]
+    }
+  ],
+  "known_gaps": [
+    {
+      "id": "rust_driver_missing",
+      "status": "driver_gap",
+      "description": "Python and TypeScript drive this fixture; Rust does not yet. The Rust OpenAIConverter exposes only convert_registry* — there is no convert_descriptor — so a driver must build a Registry and register a module before it can convert one descriptor. Worth doing, but it is a different shape of test than the other two bridges need."
+    }
+  ]
+}

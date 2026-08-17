@@ -1,8 +1,11 @@
 {
-  "description": "Standard mapping from apcore Module to MCP Tool (Algorithm M01)",
+  "description": "apcore Module -> MCP Tool, as built by MCPServerFactory.build_tool(). Pins SRS section 7.1 'MCP Tool Definition': name equals the module id with dot notation preserved, inputSchema is the module input schema, annotations are the four MCP behavioural hints.",
+  "entry_point": "MCPServerFactory.build_tool(descriptor)",
+  "spec": "srs-apcore-mcp.md#7.1",
   "test_cases": [
     {
       "id": "basic_module_mapping",
+      "description": "Dot notation is preserved in the MCP tool name. Hyphenation belongs to the OpenAI function-name normalizer (see openai_tool_mapping.json), not here.",
       "input_module": {
         "module_id": "executor.email.send_email",
         "description": "Send an email via SMTP",
@@ -20,7 +23,7 @@
         }
       },
       "expected_mcp_tool": {
-        "name": "executor-email-send_email",
+        "name": "executor.email.send_email",
         "description": "Send an email via SMTP",
         "inputSchema": {
           "type": "object",
@@ -32,118 +35,61 @@
           "additionalProperties": false
         },
         "annotations": {
-          "cacheable": false
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": true
         }
       }
     },
     {
-      "id": "llm_description_priority",
-      "input_module": {
-        "module_id": "auth.login",
-        "description": "Human description",
-        "input_schema": {
-          "type": "object",
-          "properties": {
-            "token": {
-              "type": "string",
-              "description": "Short desc",
-              "x-llm-description": "Long AI-specific description of the token"
-            }
-          }
-        }
-      },
-      "expected_mcp_tool": {
-        "name": "auth-login",
-        "description": "Human description",
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "token": {
-              "type": "string",
-              "description": "Long AI-specific description of the token"
-            }
-          }
-        }
-      }
-    },
-    {
-      "id": "strip_x_extensions",
+      "id": "x_extensions_survive_the_mcp_schema",
+      "description": "The MCP path passes the input schema through; it does not promote x-llm-description or strip x- extensions. Both of those belong to the OpenAI strict conversion. Pins the boundary between the two paths.",
       "input_module": {
         "module_id": "data.query",
+        "description": "Run a query",
         "input_schema": {
           "type": "object",
           "properties": {
             "sql": {
               "type": "string",
-              "x-sensitive": true,
-              "x-internal-flag": "secret"
+              "description": "Short desc",
+              "x-llm-description": "Long AI-specific description",
+              "x-sensitive": true
             }
           }
         }
       },
       "expected_mcp_tool": {
-        "name": "data-query",
+        "name": "data.query",
+        "description": "Run a query",
         "inputSchema": {
           "type": "object",
           "properties": {
             "sql": {
-              "type": "string"
+              "type": "string",
+              "description": "Short desc",
+              "x-llm-description": "Long AI-specific description",
+              "x-sensitive": true
             }
-          }
-        }
-      }
-    },
-    {
-      "id": "redacted_output_sensitive_field",
-      "description": "Output redaction replaces x-sensitive field values with REDACTED (F-038)",
-      "input_module": {
-        "module_id": "auth.get_token",
-        "input_schema": {
-          "type": "object",
-          "properties": {
-            "username": { "type": "string" }
-          }
-        },
-        "output_schema": {
-          "type": "object",
-          "properties": {
-            "token": { "type": "string", "x-sensitive": true },
-            "expires_at": { "type": "string" }
-          }
-        }
-      },
-      "test_output": {
-        "token": "secret-jwt-token-123",
-        "expires_at": "2026-04-06T12:00:00Z"
-      },
-      "expected_redacted_output": {
-        "token": "***REDACTED***",
-        "expires_at": "2026-04-06T12:00:00Z"
-      }
-    },
-    {
-      "id": "extra_annotation_mcp_prefix_passthrough",
-      "description": "mcp_ prefixed keys from annotations.extra flow to tool description (F-041)",
-      "input_module": {
-        "module_id": "image.resize",
-        "description": "Resize an image",
-        "input_schema": {
-          "type": "object",
-          "properties": {
-            "width": { "type": "integer" }
-          }
+          },
+          "additionalProperties": false
         },
         "annotations": {
-          "readonly": false,
-          "extra": {
-            "mcp_category": "image",
-            "mcp_cost": "high",
-            "internal_flag": "ignored"
-          }
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": true
         }
-      },
-      "expected_description_contains": ["category: image", "cost: high"],
-      "expected_description_not_contains": ["internal_flag", "ignored"]
+      }
+    }
+  ],
+  "known_gaps": [
+    {
+      "id": "f041_mcp_description_passthrough",
+      "spec": "prd-apcore-mcp.md#F-041",
+      "status": "unimplemented_consistently",
+      "description": "F-041 acceptance criteria 1 and 5 say mcp_-prefixed keys from annotations.extra reach the MCP tool description and the Explorer detail view. In all three bridges AnnotationMapper.to_description_suffix() is called only from the OpenAI converter, never from build_tool(), so the MCP description never carries them. The three implementations agree, so this is a spec-versus-implementation gap rather than cross-language divergence. Covered on the OpenAI path by openai_tool_mapping.json#mcp_prefix_reaches_the_description."
     }
   ]
 }
