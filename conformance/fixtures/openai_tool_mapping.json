@@ -121,12 +121,5 @@
         "mcp_category"
       ]
     }
-  ],
-  "known_gaps": [
-    {
-      "id": "rust_driver_missing",
-      "status": "driver_gap",
-      "description": "Python and TypeScript drive this fixture; Rust does not yet. The Rust OpenAIConverter exposes only convert_registry* — there is no convert_descriptor — so a driver must build a Registry and register a module before it can convert one descriptor. Worth doing, but it is a different shape of test than the other two bridges need."
-    }
   ]
 }

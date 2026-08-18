@@ -52,17 +52,6 @@
         "apcore_rust": "does not mask `token`; masks `_secret_` prefix only",
         "apcore_js": "does not mask `token`"
       }
-    },
-    {
-      "id": "f038_criterion_6_wording",
-      "spec": "prd-apcore-mcp.md#F-038",
-      "status": "spec_wording_lags_implementation",
-      "description": "F-038 acceptance criterion 6 says an empty output_schema performs no redaction. At least apcore (Python) still masks by key name with no schema at all. The criterion should be narrowed to 'no schema-driven redaction' once the divergence above is resolved."
-    },
-    {
-      "id": "rust_driver_missing",
-      "status": "driver_gap",
-      "description": "Python and TypeScript drive this fixture; Rust does not yet. ExecutionRouter::redact_output is private, so an integration test under tests/ cannot reach it. A Rust driver needs either a pub(crate) seam or the case moved into router.rs' unit tests."
     }
   ]
 }
