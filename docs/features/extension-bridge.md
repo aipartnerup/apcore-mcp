@@ -8,18 +8,28 @@ description: "Extension Bridge feature spec: wires apcore ExtensionManager into 
 > Source: extracted from apcore-mcp/docs/tech-design-apcore-mcp.md (F-042)
 > Created: 2026-04-15
 
-> **Status (v0.15.0):** EB-1 (`ExtensionManager.apply()`) is **withdrawn**. The
-> 0.14.0 cross-language sync confirmed that none of the three SDKs need a
-> distinct `apply()` step — apcore's `ExtensionManager` already performs
-> registration-time wiring during executor construction, so re-calling
-> `apply()` at factory startup would be a no-op. Treat references to
-> `apply()` in the Responsibilities / Behaviour sections below as
-> describing the **conceptual** integration boundary; no SDK is required
-> to expose a literal `apply()` call. Resolution precedence and adapter-hook
-> kwargs (EB-2) are functional in Python+TypeScript via `serve()`/`async_serve()`
-> kwargs (`schema_converter`, `annotation_mapper`, `error_mapper`). Rust
-> adapter-hook injection remains deferred — Rust adapters are stateless unit
-> structs and require trait-based redesign.
+> **Status (v0.17.x): this feature is UNIMPLEMENTED in all three SDKs.** Read the
+> sections below as a design target, not as shipped behaviour.
+>
+> - **EB-1 (`ExtensionManager.apply()`) — withdrawn.** The 0.14.0 cross-language sync
+>   confirmed that no SDK needs a distinct `apply()` step: apcore's `ExtensionManager`
+>   already performs registration-time wiring during executor construction, so re-calling
+>   `apply()` at factory startup would be a no-op. Treat `apply()` in the Responsibilities /
+>   Behaviour sections as the **conceptual** integration boundary; no SDK exposes a literal
+>   `apply()` call.
+> - **EB-2 (adapter-hook injection) — not implemented in any SDK.** An earlier revision of
+>   this note claimed it was "functional in Python+TypeScript". It is not, and it never was.
+>   Measured at 0.17.2: Python's `serve()` takes 37 keyword parameters and `MCPServerFactory.__init__`
+>   takes exactly `strict` and `rich_description` — none of `extensions`, `schema_converter`,
+>   `annotation_mapper`, `error_mapper` appear in either. TypeScript rejects the same options at
+>   compile time (`tsc` TS2353); a JavaScript caller gets no error and the options are silently
+>   dropped. `serve()` hardcodes `new MCPServerFactory()` and `new ExecutionRouter(...)`, and the
+>   mappers are private fields with no injection point. Rust is likewise deferred — its adapters
+>   are stateless unit structs and would need a trait-based redesign.
+>
+> There is therefore **no supported way to replace the built-in SchemaConverter,
+> AnnotationMapper or ErrorMapper** on any entry point. `ExtensionBridge` and
+> `ExtensionManager` do not appear in any SDK's source.
 
 ## Purpose
 

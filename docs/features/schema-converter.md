@@ -83,7 +83,7 @@ The Schema Converter exposes a `strict` option that tightens the converted JSON 
 
 ### Per-SDK Defaults
 - Python (`SchemaConverter(strict=True)`) — default `True`.
-- TypeScript (`convertInputSchema(descriptor, { strict })`) — option is optional and defaults to `false` at the converter level; the MCP Server Factory opts in with `strict: true` when building tools.
+- TypeScript (`convertInputSchema(descriptor, { strict })`) — option is optional and defaults to **`true`** at the converter level (`schema.ts:77`, the [SC-11] alignment fix); callers that want permissive schemas must pass `{ strict: false }` explicitly. An earlier revision of this spec said the default was `false`; it is not.
 - Rust (`SchemaConverter::convert_input_schema_strict(schema, strict)`) — strict is an explicit parameter; the default constructor path uses strict mode, and the factory invokes the strict variant.
 
 ### What Strict Injects

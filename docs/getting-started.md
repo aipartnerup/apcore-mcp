@@ -62,8 +62,15 @@ If you have an `extensions/` directory containing your apcore modules, you can l
 
 === "Rust"
 
+    !!! warning "`--extensions-dir` does not discover modules in the Rust CLI"
+        The Rust binary accepts the flag and starts, but builds an **empty registry** with a warning
+        — apcore's public Rust API has no runtime directory discovery. You get a working server with
+        zero user tools (only the `__apcore_*` meta-tools). There is no zero-code path in Rust yet:
+        build a `Registry` → `Executor` in code and use the programmatic API in §3 below. Tracked in
+        the CHANGELOG under *Known limitations (Rust)*.
+
     ```bash
-    # stdio (default)
+    # stdio (default) — starts, but serves no user modules today
     apcore-mcp --extensions-dir ./extensions
 
     # HTTP with Tool Explorer UI
@@ -262,6 +269,10 @@ Add this to `~/Library/Application Support/Claude/claude_desktop_config.json` (m
       }
     }
     ```
+
+    *This config launches the Rust binary successfully but exposes no user modules — see the
+    `--extensions-dir` warning in §2. Point your client at the Python or TypeScript binary, or wrap
+    the Rust programmatic API in your own binary.*
 
 ### Cursor / Claude Code / Windsurf
 

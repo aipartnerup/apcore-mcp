@@ -72,6 +72,19 @@ To avoid "notification storms" during bulk registration (e.g., at startup or whe
 
 ## Client Notification Bridge
 
+> **Status (0.17.x): NOT IMPLEMENTED in any SDK.** Everything in this section — emission,
+> the 100 ms debounce window, per-session ACL filtering, and HTTP fan-out — is a design target.
+> Measured: no SDK contains a single call site that sends `notifications/tools/list_changed`.
+> All three nonetheless advertise `tools: { listChanged: true }` in the initialize response
+> (Python `factory.py:504`, TypeScript `factory.ts:132`, Rust `factory.rs:712`), so a client that
+> trusts the capability will wait for a refresh signal that never arrives and keep serving a stale
+> tool list after a runtime `register`/`unregister`.
+>
+> What *does* work today is the listener's internal half: the register/unregister subscription and
+> the rebuild of the active tool collection, so `tools/list` returns the correct set **when the
+> client asks again**. Until the bridge lands, treat dynamic registration as poll-only and consider
+> whether advertising `listChanged: true` is honest for your deployment.
+
 The Client Notification Bridge translates apcore Registry `register`/`unregister` events into MCP `notifications/tools/list_changed` messages delivered to connected clients.
 
 ### Emission Triggers
@@ -97,7 +110,7 @@ The Client Notification Bridge translates apcore Registry `register`/`unregister
 ## Constraints
 
 - **Registry Compatibility**: Requires an apcore Registry that supports event listeners (standard in apcore >= 0.19.0 (language-equivalent)).
-- **Client Support**: Not all MCP clients may implement the `list_changed` notification; the listener remains functional even if clients ignore the message.
+- **Client Support**: Not all MCP clients may implement the `list_changed` notification; the listener remains functional even if clients ignore the message. (Moot until the Client Notification Bridge above is implemented — today no SDK sends one.)
 - **Async Safety**: Callbacks from the Registry (which may be synchronous) must be safely bridged to the server's asynchronous event loop.
 
 ## Error Handling

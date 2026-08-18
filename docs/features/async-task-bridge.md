@@ -85,13 +85,19 @@ The bridge only projects apcore's lifecycle; it does not add new states. Termina
 
 ## Configuration
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `async.max_concurrent` | `10` | Forwarded to `AsyncTaskManager(max_concurrent=...)`. |
-| `async.max_tasks` | `1000` | Forwarded to `AsyncTaskManager(max_tasks=...)`. |
-| `async.cleanup_interval_s` | `3600` | Age threshold passed to periodic `cleanup()`. |
-| `async.hint_keys` | `["metadata.async", "annotations.extra.mcp_async"]` | Descriptor paths inspected to classify a module as async. |
-| `async.meta_tools_enabled` | `true` | When `false`, the four `__apcore_task_*` tools are not registered and async routing is disabled. |
+These are **`serve()` parameters, not Config Bus keys** — there is no `async.*` namespace on the
+Config Bus in any SDK, and passing `async: {...}` in `apcore.yaml` has no effect.
+
+| Parameter | Default | Status | Description |
+|-----|---------|--------|-------------|
+| `async_max_concurrent` / `asyncMaxConcurrent` | `10` | implemented | Forwarded to `AsyncTaskManager(max_concurrent=...)`. |
+| `async_max_tasks` / `asyncMaxTasks` | `1000` | implemented | Forwarded to `AsyncTaskManager(max_tasks=...)`. |
+| `async_tasks` / `--no-async` | `true` | implemented | When false, the `__apcore_task_*` meta-tools are not registered and async routing is disabled. TypeScript also exposes the `--no-async` CLI flag; Python and Rust enable the bridge unconditionally from the CLI. |
+| `async.cleanup_interval_s` | `3600` | **not implemented** | No SDK reads a cleanup interval — the string does not appear in any source tree. Cleanup age is whatever `AsyncTaskManager` applies upstream. |
+| `async.hint_keys` | *(fixed)* | **not configurable** | The async-hint paths are hardcoded, not a setting: a module is async when `metadata.async` is truthy **or** `annotations.extra["mcp_async"] == "true"`. There is no way to add or replace a hint path. |
+
+The row previously listed as `async.meta_tools_enabled` is the `async_tasks` parameter above; the
+`async.meta_tools_enabled` spelling exists in no SDK.
 
 ## Error Handling
 

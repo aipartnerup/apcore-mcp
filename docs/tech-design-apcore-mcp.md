@@ -302,7 +302,9 @@ graph TB
 - Hyphen `-` is unambiguous: apcore module IDs do not use hyphens by convention.
 - The mapping is bijective (reversible), which is critical if the user needs to dispatch OpenAI tool calls back to the Executor.
 
-**Consequences:** All OpenAI-facing tool names use `-` instead of `.`. The `ModuleIDNormalizer` class provides both `normalize()` and `denormalize()` methods. MCP tool names now come from `display.mcp.alias` when present (pre-sanitized by `DisplayResolver` to `[a-zA-Z_][a-zA-Z0-9_-]*`, ≤ 64 chars), with `module_id` as fallback (auto-sanitized: dots → underscores).
+**Consequences:** All OpenAI-facing tool names use `-` instead of `.`. The `ModuleIDNormalizer` class provides both `normalize()` and `denormalize()` methods.
+
+**Scope — OpenAI only.** MCP tool names are *not* normalized. MCP has no `^[a-zA-Z0-9_-]+$` restriction, so the bridge exposes the `module_id` verbatim, dots and all (`image.resize` is the MCP tool name). A display overlay may override it: the factory reads `descriptor.display` — falling back to `descriptor.metadata["display"]` — and takes `["mcp"]["alias"]` as the tool name when present, otherwise `module_id`. The alias is used **as typed**; no sanitization, no length cap, and no `DisplayResolver` component exists in any SDK. An operator who sets an alias owns its validity. See the "Display overlay" contract in `features/mcp-server-factory.md`.
 
 #### ADR-04: Schema $ref Inlining for MCP/OpenAI Compatibility
 
@@ -380,13 +382,13 @@ classDiagram
     }
 
     class AnnotationMapper {
-        +to_mcp_annotations(annotations: ModuleAnnotations | None) ToolAnnotations
+        +to_mcp_annotations(annotations: ModuleAnnotations | None) dict
         +to_description_suffix(annotations: ModuleAnnotations | None) str
         +has_requires_approval(annotations: ModuleAnnotations | None) bool
     }
 
     class ErrorMapper {
-        +to_mcp_error(error: Exception) CallToolResult
+        +to_mcp_error(error: Exception) dict
         -_format_validation_errors(error: SchemaValidationError) str
         -_sanitize_message(error: Exception) str
     }
@@ -400,7 +402,7 @@ classDiagram
         -_executor: Executor
         -_error_mapper: ErrorMapper
         +__init__(executor: Executor)
-        +handle_call(tool_name: str, arguments: dict) CallToolResult
+        +handle_call(tool_name: str, arguments: dict, extra: dict | None) tuple
     }
 
     class MCPServerFactory {
@@ -512,15 +514,15 @@ sequenceDiagram
     alt Success path
         Exec-->>Router: {"status": "ok", "path": "/out/resized.png"}
         Router->>Router: json.dumps(output)
-        Router-->>Server: CallToolResult(content=[TextContent(text=json_output)], isError=False)
-        Server-->>Client: tools/call response (success)
+        Router-->>Server: ([{type:"text", text:json_output}], false, trace_id)
+        Server-->>Client: tools/call response (success, rendered as CallToolResult isError=false)
     end
 
     alt ModuleNotFoundError
         Exec-->>Router: raises ModuleNotFoundError("image.resize")
         Router->>EMap: to_mcp_error(error)
-        EMap-->>Router: CallToolResult(content=[TextContent(text="Module not found: image.resize")], isError=True)
-        Router-->>Server: CallToolResult(isError=True)
+        EMap-->>Router: {isError:true, errorType:"MODULE_NOT_FOUND", message:"Module not found: image.resize", ...}
+        Router-->>Server: ([{type:"text", text:"Module not found: image.resize"}], true, trace_id)
         Server-->>Client: tools/call response (error)
     end
 
@@ -528,17 +530,17 @@ sequenceDiagram
         Exec-->>Router: raises SchemaValidationError(errors=[{field: "width", code: "int_type", message: "..."}])
         Router->>EMap: to_mcp_error(error)
         EMap->>EMap: _format_validation_errors(error)
-        EMap-->>Router: CallToolResult(content=[TextContent(text="Input validation failed:\n- width: ...")], isError=True)
-        Router-->>Server: CallToolResult(isError=True)
+        EMap-->>Router: {isError:true, errorType:"SCHEMA_VALIDATION_ERROR", message:"Input validation failed:\n- width: ...", ...}
+        Router-->>Server: ([{type:"text", text:"Input validation failed:\n- width: ..."}], true, trace_id)
         Server-->>Client: tools/call response (error with field details)
     end
 
     alt ACLDeniedError
         Exec-->>Router: raises ACLDeniedError(caller_id="mcp_client", target_id="image.resize")
         Router->>EMap: to_mcp_error(error)
-        EMap-->>Router: CallToolResult(content=[TextContent(text="Access denied")], isError=True)
+        EMap-->>Router: {isError:true, errorType:"ACL_DENIED", message:"Access denied", ...}
         Note over EMap: caller_id NOT exposed in message
-        Router-->>Server: CallToolResult(isError=True)
+        Router-->>Server: ([{type:"text", text:"Access denied"}], true, trace_id)
         Server-->>Client: tools/call response (access denied)
     end
 
@@ -546,9 +548,9 @@ sequenceDiagram
         Exec-->>Router: raises RuntimeError("disk full")
         Router->>EMap: to_mcp_error(error)
         EMap->>EMap: _sanitize_message(error)
-        EMap-->>Router: CallToolResult(content=[TextContent(text="Internal error occurred")], isError=True)
+        EMap-->>Router: {isError:true, errorType:"GENERAL_INTERNAL_ERROR", message:"Internal error occurred", details:null}
         Note over EMap: Stack trace logged at ERROR level, NOT sent to client
-        Router-->>Server: CallToolResult(isError=True)
+        Router-->>Server: ([{type:"text", text:"Internal error occurred"}], true, trace_id)
         Server-->>Client: tools/call response (internal error)
     end
 ```
@@ -939,13 +941,11 @@ class AnnotationMapper:
 
 **File:** `src/apcore_mcp/server/router.py`
 
-**Responsibility:** Receive MCP tool call requests (tool name + arguments dict) and route them through `Executor.call_async()`. Convert the result to a `CallToolResult` or map errors via `ErrorMapper`.
+**Responsibility:** Receive MCP tool call requests (tool name + arguments dict) and route them through `Executor.call_async()`. Return the call-result tuple `(content, is_error, trace_id)`, mapping errors via `ErrorMapper`. The MCP SDK handler registered by `MCPServerFactory` renders that tuple as the protocol-level `CallToolResult`; the router never constructs one itself.
 
 **Public API:**
 
 ```python
-from mcp.types import CallToolResult
-
 class ExecutionRouter:
     """Routes MCP tool calls through the apcore Executor pipeline."""
 
@@ -977,7 +977,8 @@ class ExecutionRouter:
         self,
         tool_name: str,
         arguments: dict[str, Any],
-    ) -> CallToolResult:
+        extra: dict[str, Any] | None = None,
+    ) -> tuple[list[dict[str, Any]], bool, str | None]:
         """Execute a tool call through the Executor pipeline.
 
         Steps:
@@ -986,7 +987,7 @@ class ExecutionRouter:
         2. (if redact_output) Call redact_sensitive(output, output_schema)
            to replace x-sensitive fields and _secret_* keys with "***REDACTED***".
         3. On success: serialize output dict to JSON string,
-           return CallToolResult with TextContent and isError=False.
+           return ([{"type": "text", "text": <json>}], False, trace_id).
            If trace mode: include _meta.trace in response.
         4. On apcore error: delegate to ErrorMapper.to_mcp_error().
         5. On unexpected exception: log full traceback at ERROR level,
@@ -996,10 +997,15 @@ class ExecutionRouter:
             tool_name: The MCP tool name (equals apcore module_id).
             arguments: The tool arguments dict from the MCP client.
                        May be empty dict {} for modules with no required inputs.
+            extra: Optional per-call context -- progress_token, send_notification,
+                   session, identity, call_id, _meta, version_hint.
 
         Returns:
-            CallToolResult with either success content or error content.
-            Never raises -- all errors are caught and converted to CallToolResult.
+            (content, is_error, trace_id):
+              content   list of {"type": "text", "text": str} dicts
+              is_error  False on success, True on any execution failure
+              trace_id  context.trace_id when a context exists, else None
+            Never raises -- all errors are caught and converted to an error tuple.
         """
 
     async def validate_tool(
@@ -1057,7 +1063,7 @@ class ExecutionRouter:
         """
 ```
 
-**Error handling:** `handle_call()` wraps the entire execution in a try/except. It catches `ModuleError` (the base class for all apcore errors) and any `Exception`. All errors are converted to `CallToolResult` with `isError=True`. No exception ever propagates to the MCP Server layer. Unexpected exceptions are logged with full traceback at ERROR level via the `apcore_mcp.server.router` logger, but the error message sent to the MCP client is always the generic "Internal error occurred" to prevent information leakage.
+**Error handling:** `handle_call()` wraps the entire execution in a try/except. It catches `ModuleError` (the base class for all apcore errors) and any `Exception`. All errors are converted to an error tuple with `is_error=True`. No exception ever propagates to the MCP Server layer. Unexpected exceptions are logged with full traceback at ERROR level via the `apcore_mcp.server.router` logger, but the error message sent to the MCP client is always the generic "Internal error occurred" to prevent information leakage.
 
 **Thread/async safety:** `handle_call()` is an async method. It delegates to `Executor.call_async()` which internally handles sync/async module bridging. Multiple concurrent tool calls are safe because each `call_async()` invocation creates its own `Context` with an independent call chain. The `Executor` is thread-safe (verified in source: uses `threading.RLock` for cache, `threading.Thread` for timeout enforcement).
 
@@ -1067,21 +1073,20 @@ class ExecutionRouter:
 
 **File:** `src/apcore_mcp/adapters/errors.py`
 
-**Responsibility:** Convert apcore error hierarchy instances into MCP `CallToolResult` responses with `isError=True` and structured error messages.
+**Responsibility:** Convert apcore error hierarchy instances into error response dicts with `isError: True`, an `errorType` code, a safe `message`, optional `details`, and the camelCase AI-guidance keys (`retryable`, `aiGuidance`, `userFixable`, `suggestion`). The router lifts `message` into the content items; the MCP SDK renders the eventual `CallToolResult`.
 
 **Public API:**
 
 ```python
-from mcp.types import CallToolResult, TextContent
 import logging
 
 logger = logging.getLogger("apcore_mcp.adapters.errors")
 
 class ErrorMapper:
-    """Maps apcore errors to MCP CallToolResult error responses."""
+    """Maps apcore errors to MCP error response dicts."""
 
-    def to_mcp_error(self, error: Exception) -> CallToolResult:
-        """Convert any exception to an MCP error CallToolResult.
+    def to_mcp_error(self, error: Exception) -> dict[str, Any]:
+        """Convert any exception to an MCP error response dict.
 
         Mapping table:
         +---------------------------------+--------------------------------------------+
@@ -1112,7 +1117,21 @@ class ErrorMapper:
             error: The caught exception.
 
         Returns:
-            CallToolResult with isError=True and a TextContent message.
+            An error response dict:
+              {
+                "isError": True,
+                "errorType": str,          # error code, or "GENERAL_INTERNAL_ERROR"
+                "message": str,            # the sanitized message from the table above
+                "details": dict | None,
+                # AI-guidance keys, camelCase on the wire:
+                "retryable": bool,
+                "aiGuidance": str,
+                "userFixable": bool,
+                "suggestion": str,
+              }
+            The `details` key is always present -- JSON null when there is nothing
+            to attach -- so clients can test membership. `ExecutionRouter` lifts
+            `message` into the content items it returns.
         """
 ```
 
@@ -1151,17 +1170,26 @@ class ErrorMapper:
             Sanitized error message string.
         """
 
-    def _make_error_result(self, message: str) -> CallToolResult:
-        """Construct a CallToolResult with isError=True.
-
-        Args:
-            message: Error message string.
+    def internal_error_response(self) -> dict[str, Any]:
+        """Construct the generic error envelope used for non-ModuleError exceptions.
 
         Returns:
-            CallToolResult(
-                content=[TextContent(type="text", text=message)],
-                isError=True,
-            )
+            {
+                "isError": True,
+                "errorType": "GENERAL_INTERNAL_ERROR",
+                "message": "Internal error occurred",
+                "details": None,
+            }
+            Byte-identical across all three SDKs, including the explicit
+            `"details": null` -- the key is never omitted.
+        """
+
+    def _attach_ai_guidance(self, error: Exception, result: dict[str, Any]) -> None:
+        """Copy the AI-guidance attributes off the error onto the response.
+
+        Reads the snake_case source attributes (`ai_guidance`, `user_fixable`)
+        and writes the camelCase wire keys (`aiGuidance`, `userFixable`).
+        Mutates `result` in place; absent attributes are skipped.
         """
 ```
 
@@ -2055,13 +2083,21 @@ def trace_to_metrics(
 
 ### 6.16 Output Redactor (F-038)
 
-**File:** `src/apcore_mcp/server/redactor.py`
+**File:** `src/apcore_mcp/server/router.py` (inlined into `ExecutionRouter`; there is no separate `redactor.py`)
 
 **Responsibility:** Thin wrapper around `apcore.utils.redact_sensitive()` for MCP output sanitization.
+
+Redaction is a private method on `ExecutionRouter`, not a public module-level function: Python and
+TypeScript expose it as `_maybe_redact(tool_name, result)` / `_maybeRedact(toolName, result)`, Rust as
+`ExecutionRouter::redact_output(&self, tool_name, result)`. All three look the schema up in the
+router's own `output_schema_map` rather than taking it as a parameter. The pseudocode below states the
+contract; treat `output_schema` as "the schema the router resolved for this tool".
 
 ```python
 from apcore import redact_sensitive, REDACTED_VALUE
 
+# Shape of ExecutionRouter._maybe_redact(), written with the resolved schema
+# spelled out as a parameter for readability.
 def redact_tool_output(
     output: dict[str, Any],
     output_schema: dict[str, Any] | None,
@@ -2074,11 +2110,15 @@ def redact_tool_output(
 
     Returns:
         Deep copy with sensitive values replaced by "***REDACTED***".
-        Returns original output unchanged if output_schema is None or {}.
+        Returns the original output unchanged only when output_schema is
+        None (no schema registered for this tool). An empty {} schema is
+        still handed to redact_sensitive(), which masks _secret_* prefixed
+        keys regardless of schema markings -- see FR-REDACT-002 and
+        TC-REDACT-002. Never skip redaction just because the schema is empty.
     """
 ```
 
-**Data flow:** `Executor output` → `redact_tool_output(output, output_schema)` → `json.dumps()` → `CallToolResult`
+**Data flow:** `Executor output` → `ExecutionRouter._maybe_redact(tool_name, output)` → `json.dumps()` → content items
 
 **Schema resolution:** The `output_schema_map` is built during tool registration by `MCPServerFactory.build_tools()` and passed to `ExecutionRouter.__init__()`. For each module, `registry.get_definition(module_id).output_schema` provides the schema.
 
@@ -2180,7 +2220,7 @@ After generating the standard `[Annotations: ...]` suffix, the mapper checks `an
 
 **Responsibility:** Route async-hinted module invocations to apcore's `AsyncTaskManager` and expose five reserved meta-tools so MCP clients can submit, poll, cancel, and list background tasks (`__apcore_task_submit` / `__apcore_task_status` / `__apcore_task_cancel` / `__apcore_task_list`) plus dry-run preview state changes via `__apcore_module_preview` (v0.15+, apcore PROTOCOL_SPEC §5.6). F-042 is reserved for the Extension Bridge and is not covered here.
 
-**Placement:** The bridge sits in front of the Execution Router. For each incoming `tools/call`, `ExecutionRouter.handle_call()` consults `AsyncTaskBridge.is_async(descriptor)`; async-hinted modules are handed to `AsyncTaskBridge.submit()` while sync modules follow the existing `Executor.call_async()` path unchanged.
+**Placement:** The bridge sits in front of the Execution Router. For each incoming `tools/call`, `ExecutionRouter.handle_call()` consults `AsyncTaskBridge.is_async_module(descriptor)`; async-hinted modules are handed to `AsyncTaskBridge.submit()` while sync modules follow the existing `Executor.call_async()` path unchanged.
 
 **Async hint detection:** Inspects `descriptor.metadata.async` first, then `descriptor.annotations.extra["mcp_async"] == "true"`. Hint keys are configurable via `async.hint_keys`.
 
@@ -2211,6 +2251,10 @@ After generating the standard `[Annotations: ...]` suffix, the mapper checks `an
 
 **File:** `src/apcore_mcp/__init__.py`
 
+> 37 keyword parameters at 0.17.2. SRS §8.1.1 carries the same list; if the two ever disagree, SRS
+> §8.1.1 is authoritative and this block is stale. `extensions` / `schema_converter` /
+> `annotation_mapper` / `error_mapper` are **not** parameters — see `features/extension-bridge.md`.
+
 ```python
 def serve(
     registry_or_executor: Registry | Executor,
@@ -2227,7 +2271,7 @@ def serve(
     on_shutdown: Callable[[], None] | None = None,
     dynamic: bool = False,
     validate_inputs: bool = False,
-    metrics_collector: MetricsExporter | None = None,
+    metrics_collector: MetricsExporter | bool | None = None,
     authenticator: Authenticator | None = None,
     require_auth: bool = True,
     exempt_paths: set[str] | None = None,
@@ -2235,13 +2279,22 @@ def serve(
     explorer: bool = False,
     explorer_prefix: str = "/explorer",
     allow_execute: bool = False,
-    explorer_title: str = "MCP Tool Explorer",
-    explorer_project_name: str | None = None,
-    explorer_project_url: str | None = None,
+    explorer_title: str = "APCore MCP Explorer",
+    explorer_project_name: str | None = "apcore-mcp",
+    explorer_project_url: str | None = "https://github.com/aiperceivable/apcore-mcp-python",
+    approval_store: ApprovalStore | None = None,       # Approval Phase B: storage-backed approvals
+    approval_notify: Callable[[dict], None] | None = None,  # Approval Phase B: out-of-band notify hook
     output_formatter: Callable[[dict], str] | None = None,
+    output_format: str | None = None,     # "json" (default) | "csv" | "jsonl"
     strategy: str | None = None,          # F-036: "standard"|"internal"|"testing"|"performance"|"minimal"
     trace: bool = False,                   # F-037: enable call_async_with_trace()
     redact_output: bool = True,            # F-038: apply redact_sensitive() to output
+    middleware: list[Middleware] | None = None,  # singular; `middlewares` is not accepted
+    acl: ACL | None = None,
+    observability: bool = False,
+    async_tasks: bool = True,              # F-043: async task meta-tools
+    async_max_concurrent: int = 10,
+    async_max_tasks: int = 1000,
 ) -> None:
     """Launch an MCP Server exposing all apcore modules as tools.
 
@@ -2424,7 +2477,7 @@ async def async_serve(
     prefix: str | None = None,
     log_level: str | None = None,
     validate_inputs: bool = False,
-    metrics_collector: MetricsExporter | None = None,
+    metrics_collector: MetricsExporter | bool | None = None,
     authenticator: Authenticator | None = None,
     require_auth: bool = True,
     exempt_paths: set[str] | None = None,
@@ -2683,11 +2736,12 @@ tools/call request
                               json.dumps(output)
                                         |
                                         v
-CallToolResult(
-  content=[TextContent(
-    type="text",
-    text='{"status":"ok","path":"/out/img.png"}'
-  )],
+ExecutionRouter returns
+  ([{"type": "text", "text": '{"status":"ok","path":"/out/img.png"}'}], False, trace_id)
+          |
+          v
+MCP SDK renders CallToolResult(
+  content=[TextContent(type="text", text='{"status":"ok","path":"/out/img.png"}')],
   isError=False,
 )
           |
@@ -2835,16 +2889,28 @@ Ensures MCP clients always receive a valid object schema.
 
 ### 9.2 Error Response Format
 
-All error responses use the MCP `CallToolResult` structure:
+`ErrorMapper` produces an error response dict; `ExecutionRouter` turns it into the call-result
+tuple; the MCP SDK renders that as the `CallToolResult` the client sees. All three levels:
 
 ```python
+# 1. ErrorMapper.to_mcp_error(error)
+{
+    "isError": True,
+    "errorType": "<error code, or GENERAL_INTERNAL_ERROR>",
+    "message": "<error message from mapping table above>",
+    "details": None,           # always present; JSON null when empty
+    "retryable": False,        # AI-guidance keys are camelCase on the wire
+    "aiGuidance": "...",
+    "userFixable": True,
+    "suggestion": "...",
+}
+
+# 2. ExecutionRouter.handle_call(...) returns
+([{"type": "text", "text": "<error message from mapping table above>"}], True, trace_id)
+
+# 3. What the MCP client observes
 CallToolResult(
-    content=[
-        TextContent(
-            type="text",
-            text="<error message from mapping table above>",
-        )
-    ],
+    content=[TextContent(type="text", text="<error message from mapping table above>")],
     isError=True,
 )
 ```
@@ -3202,7 +3268,7 @@ version = "0.1.0"
 description = "Automatic MCP Server & OpenAI Tools Bridge for apcore"
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
     { name = "aiperceivable", email = "team@aiperceivable.com" },
 ]
@@ -3212,7 +3278,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -3220,12 +3285,22 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "apcore>=0.17.1,<1.0",
-    "mcp>=1.0.0,<2.0",
+    "apcore>=0.27.0",
+    "mcp>=1.26,<2.0",
+    "mcp-embedded-ui>=0.4.0",
     "PyJWT>=2.0",
 ]
 
 [project.optional-dependencies]
+
+# apcore-toolkit is an EXTRA in Python, not a runtime dependency: every import of
+# it in src/ is lazy and every call site degrades gracefully when it is absent.
+# TypeScript and Rust declare it as a hard dependency instead -- an intentional
+# per-language difference, not drift.
+markdown = [
+    "apcore-toolkit>=0.10.0",
+]
+
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
@@ -3251,7 +3326,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 strict = true
 warn_return_any = true
 warn_unused_configs = true

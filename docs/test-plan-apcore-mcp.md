@@ -27,7 +27,15 @@ This document defines the comprehensive test plan and test cases for **apcore-mc
 
 The scope covers 46 PRD features (F-001..F-046) across the architectural components: Schema Converter, Annotation Mapper, Execution Router, Error Mapper, MCP Server Factory, OpenAI Converter, Transport Manager, CLI Module, Dynamic Registry Listener, MCP Tool Explorer, JWT Authentication, Approval Handler, Custom Output Formatter, Pipeline Strategy, Trace Exposure, Output Redaction, Preflight Validation, Annotation Metadata Passthrough, Extension Bridge (F-042), and Async Task Bridge (F-043). Testing spans five levels: unit, integration, end-to-end, performance, and security.
 
-> **Coverage gaps (test cases pending addition):** F-033 (Config Bus Namespace), F-034 (Error Formatter Registry), F-035 (Dot-Namespaced Events), F-037 (Trace Exposure), F-039 (Preflight Validation), F-040 (YAML Pipeline Config), F-041 (Annotation Metadata Passthrough), F-044 (Bidirectional Cancellation), F-045 (Observability), F-046 (Cross-SDK Cancel Dispatcher). TC-AUTH-* (F-027), TC-APPROVAL-* (F-028), TC-ASYNC-* (F-043), and TC-EXTMGR-* (F-042) are already included below.
+> **Coverage gaps (test cases pending addition):** F-033 (Config Bus Namespace), F-034 (Error
+> Formatter Registry), F-035 (Dot-Namespaced Events), F-044 (Bidirectional Cancellation), F-045
+> (Decorator Metadata Mapping), F-046 (Custom Middleware Injection). Each of these appears in this
+> plan only in this line.
+>
+> Already covered below, contrary to earlier revisions of this note: F-037 (§5.11 Pipeline Trace),
+> F-039 (§5.13 Preflight Validation), F-040 (§5.14 YAML Pipeline Configuration), F-041 (§5.15
+> Annotation Metadata Passthrough), plus TC-AUTH-* (F-027), TC-APPROVAL-* (F-028), TC-ASYNC-*
+> (F-043) and TC-EXTMGR-* (F-042). Note that five of the six TC-EXTMGR cases are DEFERRED — see §9f.
 
 ### 1.2 Test Objectives
 
@@ -743,6 +751,20 @@ show_missing = true
 
 **Test File:** `tests/unit/server/test_router.py`
 
+> **Unpacking the result.** `handle_call()` returns the tuple `(content, is_error, trace_id)`, not an
+> MCP SDK object — the SDK handler builds the `CallToolResult` a layer above. Every case in this
+> section is written against the tuple:
+>
+> ```python
+> content, is_error, trace_id = await router.handle_call(tool_name, arguments)
+> assert is_error is False
+> assert json.loads(content[0]["text"]) == {...}
+> ```
+>
+> `result.isError` / `result.content[0].text` in the steps below are shorthand for `is_error` and
+> `content[0]["text"]`. The **Expected Result** lines name the `CallToolResult` the client ends up
+> seeing, which is what an end-to-end test asserts against.
+
 ---
 
 #### TC-EXEC-001: Successful tool call returns JSON output
@@ -984,6 +1006,12 @@ show_missing = true
 ---
 
 ### 5.4 Error Mapper (TC-ERROR-xxx)
+
+> **Unpacking the result.** `to_mcp_error()` returns an error response dict — `isError`, `errorType`,
+> `message`, `details`, plus the camelCase AI-guidance keys `retryable` / `aiGuidance` /
+> `userFixable` / `suggestion`. Assert on `result["message"]`, not on a `TextContent` item; the text
+> content only exists once `ExecutionRouter` has lifted `message` into it. Asserting
+> `result["ai_guidance"]` fails — the wire keys are camelCase.
 
 **Test File:** `tests/unit/adapters/test_errors.py`
 
@@ -2253,7 +2281,13 @@ show_missing = true
 
 ### 5.12 Output Redaction (TC-REDACT-xxx)
 
-**Test File:** `tests/unit/server/test_redactor.py`
+**Test File:** `tests/unit/server/test_router_redaction.py` (redaction is a private `ExecutionRouter`
+method, not a standalone `redactor` module — see tech design §6.16)
+
+**Entry point for every case below:** build an `ExecutionRouter` whose output-schema map holds the
+listed schema for the tool under test, then drive a call through it. `redact_tool_output(output, schema)`
+in the steps is shorthand for that path (`_maybe_redact` / `_maybeRedact` / `redact_output`); there is no
+public function by that name in any SDK.
 
 ---
 
@@ -3452,18 +3486,28 @@ Validates the TM-4 wiring from `TransportManager.set_async_task_bridge` → `bri
 
 Trace target: **F-042** / FR-EXTMGR-001..003.
 
-> **Status note for 0.14.0**: FR-EXTMGR-001 (`ExtensionManager.apply()`) is uniform spec drift across all three SDKs and is being recommended for spec revision; tests TC-EXTMGR-001..003 are written against the current code path (no-op for `extensions=None`, kwarg precedence works). FR-EXTMGR-002 is partially implemented as **EB-2** in this release: Python and TypeScript expose `schema_converter` / `annotation_mapper` / `error_mapper` kwargs on `serve()`. Rust deferred — its adapters are stateless unit structs (see CHANGELOG `Deferred to a future release`).
+> **Status note (0.17.x): EB-2 is NOT implemented in any SDK.** An earlier revision of this note said
+> "Python and TypeScript expose `schema_converter` / `annotation_mapper` / `error_mapper` kwargs on
+> `serve()`". They do not. Measured at 0.17.2: Python's `serve()` has 37 keyword parameters and
+> `MCPServerFactory.__init__` takes exactly `strict` and `rich_description`; neither accepts any of
+> the three hooks or `extensions`. TypeScript rejects the same options with `tsc` TS2353. Rust is
+> deferred (stateless unit structs). FR-EXTMGR-001 (`ExtensionManager.apply()`) remains withdrawn —
+> see the Status note in `features/extension-bridge.md`.
+>
+> **TC-EXTMGR-002 through TC-EXTMGR-006 are therefore unwritable and are marked DEFERRED below.**
+> Only TC-EXTMGR-001 — the default-adapter case — can be written today, and it is the one case that
+> does not need an injection point.
 
 ### Unit Tests: Adapter-hook precedence (TC-EXTMGR-001 to TC-EXTMGR-006)
 
-| ID | Description | Input | Expected Result | Traces to |
-|----|-------------|-------|-----------------|-----------|
-| TC-EXTMGR-001 | factory uses default adapters when no overrides | `MCPServerFactory()` | built-in `SchemaConverter` / `AnnotationMapper` / `ErrorMapper` instances created | FR-EXTMGR-002 |
-| TC-EXTMGR-002 | factory uses caller-supplied `schema_converter` | `MCPServerFactory(schema_converter=Custom())` | `Custom` instance used; default not constructed | FR-EXTMGR-002 |
-| TC-EXTMGR-003 | factory uses caller-supplied `annotation_mapper` | `MCPServerFactory(annotation_mapper=Custom())` | `Custom` instance used | FR-EXTMGR-002 |
-| TC-EXTMGR-004 | factory uses caller-supplied `error_mapper` | `MCPServerFactory(error_mapper=Custom())` | `Custom` instance used | FR-EXTMGR-002 |
-| TC-EXTMGR-005 | `serve(schema_converter=…)` plumbs through to factory | `serve(registry, schema_converter=Custom())` | factory receives the same instance | FR-EXTMGR-002 |
-| TC-EXTMGR-006 | `async_serve(error_mapper=…)` plumbs through to factory | `async_serve(registry, error_mapper=Custom())` | factory receives the same instance | FR-EXTMGR-002 |
+| ID | Description | Input | Expected Result | Status |
+|----|-------------|-------|-----------------|--------|
+| TC-EXTMGR-001 | factory uses default adapters when no overrides | `MCPServerFactory()` | built-in `SchemaConverter` / `AnnotationMapper` / `ErrorMapper` instances created | ACTIVE — FR-EXTMGR-002 |
+| TC-EXTMGR-002 | factory uses caller-supplied `schema_converter` | `MCPServerFactory(schema_converter=Custom())` | `Custom` instance used; default not constructed | DEFERRED — no such parameter in any SDK; see EB-2 |
+| TC-EXTMGR-003 | factory uses caller-supplied `annotation_mapper` | `MCPServerFactory(annotation_mapper=Custom())` | `Custom` instance used | DEFERRED — see EB-2 |
+| TC-EXTMGR-004 | factory uses caller-supplied `error_mapper` | `MCPServerFactory(error_mapper=Custom())` | `Custom` instance used | DEFERRED — see EB-2 |
+| TC-EXTMGR-005 | `serve(schema_converter=…)` plumbs through to factory | `serve(registry, schema_converter=Custom())` | factory receives the same instance | DEFERRED — see EB-2 |
+| TC-EXTMGR-006 | `async_serve(error_mapper=…)` plumbs through to factory | `async_serve(registry, error_mapper=Custom())` | factory receives the same instance | DEFERRED — see EB-2 |
 
 ### Unit Tests: ExtensionManager wiring (TC-EXTMGR-007 to TC-EXTMGR-009) — DEFERRED
 

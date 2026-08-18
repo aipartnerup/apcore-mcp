@@ -12,7 +12,7 @@ The CLI allows you to launch an MCP server by pointing to an extensions director
 
 | Argument | Default | Description |
 |---|---|---|
-| `--extensions-dir` | *(required)* | Path to apcore extensions directory |
+| `--extensions-dir` | *(required)* | Path to apcore extensions directory. **Rust:** accepted, but builds an empty registry — see [Getting Started §2](getting-started.md) |
 | `--transport` | `stdio` | Transport protocol: `stdio`, `streamable-http`, or `sse` |
 | `--host` | `127.0.0.1` | Host for HTTP-based transports |
 | `--port` | `8000` | Port for HTTP-based transports (1-65535) |
@@ -20,9 +20,58 @@ The CLI allows you to launch an MCP server by pointing to an extensions director
 | `--version` | package version | MCP server version string |
 | `--log-level` | `INFO` | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 | `--explorer` | off | Enable the browser-based Tool Explorer UI (HTTP only) |
+| `--explorer-prefix` | `/explorer` | Mount path for the Explorer UI |
 | `--allow-execute` | off | Allow tool execution from the explorer UI |
 | `--jwt-secret` | — | JWT secret key for Bearer token authentication |
-| `--jwt-require-auth` | `true` | Require authentication (use `--no-jwt-require-auth` for permissive mode) |
+| `--jwt-key-file` | — | Path to a PEM key file, for asymmetric algorithms |
+| `--jwt-algorithm` | `HS256` | Signing algorithm to accept |
+| `--jwt-audience` | — | Expected `aud` claim |
+| `--jwt-issuer` | — | Expected `iss` claim |
+| `--jwt-require-auth` | `true` | Require authentication. **The permissive form differs per language** — Python: `--no-jwt-require-auth`; TypeScript: `--jwt-permissive`; Rust: `--jwt-require-auth false` (it takes a value). `--no-jwt-require-auth` is a Python-only spelling |
+| `--exempt-paths` | `/health,/metrics` | Comma-separated paths exempt from auth. Passing this **replaces** the default set rather than adding to it. `/usage` is deliberately not exempt |
+| `--approval` | `off` | Approval mode: `elicit`, `auto-approve`, `always-deny`, `off` |
+| `--strategy` | executor default | Execution strategy: `standard`, `internal`, `testing`, `performance`, `minimal` |
+| `--output-format` | `json` | Built-in output format: `json`, `csv`, `jsonl` |
+| `--observability` | off | Enable metrics + usage middleware and expose `/metrics` and `/usage` |
+| `--async` / `--no-async` | on | Enable the Async Task Bridge meta-tools *(TypeScript spelling; Python and Rust enable it unconditionally)* |
+
+## Config Bus (`apcore.yaml` / environment)
+
+apcore-mcp registers an `mcp` namespace on apcore's Config Bus, so the same settings can come from
+`apcore.yaml`, from environment variables prefixed `APCORE_MCP_`, or from the CLI. **Precedence is
+caller-wins:** an explicit `serve()` argument or CLI flag beats the Config Bus, which beats the
+built-in default.
+
+```yaml
+# apcore.yaml
+mcp:
+  transport: streamable-http
+  host: 0.0.0.0
+  port: 8000
+  explorer: true
+  require_auth: true
+```
+
+Equivalently: `APCORE_MCP_TRANSPORT=streamable-http`, `APCORE_MCP_PORT=8000`, and so on —
+uppercase the key and prefix it with `APCORE_MCP_`.
+
+| Key | Default | Notes |
+|---|---|---|
+| `transport` | `stdio` | `stdio`, `streamable-http`, `sse` |
+| `host` | `127.0.0.1` | HTTP transports only |
+| `port` | `8000` | HTTP transports only |
+| `name` | `apcore-mcp` | Server name shown to clients |
+| `log_level` | `null` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `validate_inputs` | `false` | Validate arguments against the input schema before dispatch |
+| `explorer` | `false` | Enable the Tool Explorer UI |
+| `explorer_prefix` | `/explorer` | Mount path for the Explorer |
+| `require_auth` | `true` | Require authentication on HTTP transports |
+| `middleware` | `[]` | Declarative middleware list; each entry is `{type: ..., ...kwargs}` |
+| `acl` | `null` | Declarative ACL — `{default_effect: "deny"\|"allow", rules: [...]}`; `null` means allow all |
+| `output_format` | `json` | **Rust only.** `json`, `csv`, `jsonl`. Python and TypeScript do not read this key from the Config Bus — set the formatter programmatically or with `--output-format` there |
+
+The `mcp.pipeline` section is read separately to build a custom execution strategy; see the
+`strategy` parameter and the Technical Design's YAML pipeline configuration section.
 
 ## Programmatic API
 
@@ -260,6 +309,11 @@ The `async_serve` function returns an embeddable ASGI application (Starlette) fo
 
 Converts apcore modules into OpenAI-compatible tool definitions.
 
+!!! warning "`strict` has a different default in each language"
+    Python defaults to `False`, TypeScript to `true`, and Rust takes it positionally with no default.
+    Omitting it therefore gives you permissive schemas from Python and strict ones from the other
+    two, for the same registry. Pass it explicitly.
+
 === "Python"
 
     ```python
@@ -281,10 +335,27 @@ Converts apcore modules into OpenAI-compatible tool definitions.
 
     const tools = toOpenaiTools(registryOrExecutor, {
       embedAnnotations: false,      // Append annotation hints to descriptions
-      strict: false,                // Enable OpenAI Structured Outputs strict mode
+      strict: true,                 // DEFAULT is true here — unlike Python
       tags: [],                     // Filter modules by tags
       prefix: "",                   // Filter modules by ID prefix
     });
+    ```
+
+=== "Rust"
+
+    ```rust
+    use apcore_mcp::{to_openai_tools, OpenAIToolsConfig};
+
+    // The free function takes a config struct; strict has no implicit default.
+    let tools = to_openai_tools(executor, OpenAIToolsConfig {
+        embed_annotations: false,
+        strict: true,
+        tags: None,
+        prefix: None,
+    })?;
+
+    // The method on APCoreMCP takes the two flags positionally instead:
+    //   mcp.to_openai_tools(embed_annotations, strict)
     ```
 
 ## Output Formatting
@@ -381,6 +452,11 @@ You can gate destructive or sensitive tool calls behind user approval using the 
 | `always-deny` | Denies all approval requests |
 | `off` | Disables approval checks entirely |
 
+### Phase A — inline elicitation
+
+The handler asks the caller to approve, in-band, and blocks until the answer arrives. Suitable for
+interactive MCP clients.
+
 === "Python"
 
     ```python
@@ -388,7 +464,7 @@ You can gate destructive or sensitive tool calls behind user approval using the 
     from apcore_mcp.adapters import ElicitationApprovalHandler
 
     handler = ElicitationApprovalHandler()
-    await serve(registry, approval_handler=handler)
+    serve(registry, approval_handler=handler)   # serve() is synchronous in Python — do not await it
     ```
 
 === "TypeScript"
@@ -399,6 +475,92 @@ You can gate destructive or sensitive tool calls behind user approval using the 
     const handler = new ElicitationApprovalHandler();
     await serve(registry, { approvalHandler: handler });
     ```
+
+=== "Rust"
+
+    ```rust
+    use apcore_mcp::{APCoreMCP, ElicitationApprovalHandler};
+    use std::sync::Arc;
+
+    let mcp = APCoreMCP::builder()
+        .backend("./extensions")
+        .approval_handler(Arc::new(ElicitationApprovalHandler::new(None)))
+        .build()?;
+    mcp.serve()?;
+    ```
+
+### Phase B — storage-backed approvals
+
+Phase A needs the caller to stay connected while a human decides. Phase B does not: the call returns
+immediately with an `APPROVAL_PENDING` response carrying an `approval_id`, the decision is recorded
+out-of-band, and the agent polls until it resolves. Pass an `approval_store` — and optionally an
+`approval_notify` callback that fires when a request is created, so you can push it to Slack, email,
+or a review queue.
+
+=== "Python"
+
+    ```python
+    from apcore_mcp import serve, InMemoryApprovalStore
+
+    store = InMemoryApprovalStore()
+
+    # The callback is awaited — it must be async, or return an awaitable.
+    async def notify(approval_id: str, module_id: str, arguments: dict) -> None:
+        print(f"approval {approval_id} requested for {module_id}")
+
+    serve(registry, approval_store=store, approval_notify=notify)
+    ```
+
+=== "TypeScript"
+
+    ```typescript
+    import { serve, InMemoryApprovalStore } from "apcore-mcp";
+
+    const store = new InMemoryApprovalStore();
+
+    await serve(registry, {
+      approvalStore: store,
+      // Returns Promise<void> — declare it async even when the body is synchronous.
+      approvalNotify: async (approvalId, moduleId, args) => {
+        console.error(`approval ${approvalId} requested for ${moduleId}`);
+      },
+    });
+    ```
+
+=== "Rust"
+
+    ```rust
+    use apcore_mcp::{APCoreMCP, InMemoryApprovalStore};
+    use std::sync::Arc;
+
+    let mcp = APCoreMCP::builder()
+        .backend("./extensions")
+        .approval_store(Arc::new(InMemoryApprovalStore::default()))
+        .approval_notify(|approval_id, module_id, _args| {
+            eprintln!("approval {approval_id} requested for {module_id}");
+        })
+        .build()?;
+    mcp.serve()?;
+    ```
+
+**The agent-side flow.** When a store is configured the bridge also exposes a meta-tool,
+`__apcore_approval_check`:
+
+1. The agent calls the gated tool. It comes back with an `APPROVAL_PENDING` response containing an
+   `approval_id`.
+2. A human resolves the request out-of-band — `store.resolve(approval_id, approved=True)`, or
+   whatever your backend does.
+3. The agent polls `__apcore_approval_check({"approval_id": "..."})`, which returns
+   `{approval_id, status, reason?}` where `status` is `pending`, `approved`, or `rejected`.
+4. Once `approved`, the agent retries the original tool call with `_meta.approvalId` set to that
+   `approval_id`.
+
+`InMemoryApprovalStore` is process-local and non-durable: pending records expire, resolved records
+are kept only briefly, and everything is lost on restart. It is the right default for a single
+process and the wrong one for anything horizontally scaled — implement the `ApprovalStore` interface
+against Redis or a database for that. See
+[Approval Handler (Phase B)](features/approval-phase-b.md) for the full contract, including the
+Redis-backed pseudocode.
 
 ## Tool Explorer
 

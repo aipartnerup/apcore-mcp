@@ -20,7 +20,7 @@ description: "Product Requirements Document for apcore-mcp, the adapter that aut
 
 apcore-mcp originated from the observation that apcore modules already carry all the metadata AI agent protocols need — `input_schema`, `output_schema`, `description`, and `annotations` — yet there was no standard way to expose them to MCP clients or OpenAI Function Calling. The idea was validated through competitive analysis (5+ manually-built ComfyUI MCP servers, each duplicating schema work) and demand research (MCP ecosystem growth in 2025-2026, OpenAI Function Calling as the dominant tool-use format). The core insight: since the mapping from apcore metadata to both MCP and OpenAI formats is nearly 1:1, a single adapter package can eliminate all manual tool definition work for the entire apcore ecosystem. This PRD formalizes that validated idea into actionable requirements.
 
-> For the original brainstorming and validation notes, see [`ideas/apcore-mcp.md`](../ideas/apcore-mcp.md).
+> For the original brainstorming and validation notes, see [`ideas/apcore-mcp.md`](https://github.com/aiperceivable/apcore-mcp/blob/main/ideas/apcore-mcp.md) in the repository — it is not published to this site.
 
 ---
 
@@ -1051,7 +1051,7 @@ The wire format uses camelCase (`retryable`, `aiGuidance`, `userFixable`, `sugge
 1. Explorer endpoint `POST /explorer/tools/<name>/validate` accepts the same arguments as `/call` and returns `PreflightResult` as JSON.
 2. `PreflightResult` includes per-check results: `module_id` (found/not found), `call_chain` (pass/fail), `acl` (pass/fail), `schema` (pass/fail with field-level details).
 3. Validation executes no side-effect steps (no module execution, no middleware, no output validation).
-4. `ExecutionRouter.validate_tool(tool_name, arguments)` returns `PreflightResult` directly.
+4. `ExecutionRouter.validate_tool(tool_name, arguments)` returns the upstream `PreflightResult` projected to a plain dict — `{valid, checks, requires_approval}`. The apcore type itself is not re-exported by any SDK.
 5. Validation endpoint is available when Explorer is enabled regardless of `allow_execute` setting.
 6. Invalid module_id returns `PreflightResult` with module_id check failed (not an HTTP error).
 

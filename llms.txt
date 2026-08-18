@@ -2,7 +2,7 @@
 
 > Automatic MCP server and OpenAI tools bridge for apcore — exposes apcore modules to AI agents over the Model Context Protocol with zero code changes.
 
-apcore-mcp turns apcore modules into MCP tools (and OpenAI-compatible tool schemas) automatically: it converts schemas, maps behavior annotations, routes execution back to apcore, and serves it all as an MCP server. It can also aggregate upstream MCP servers as a gateway.
+apcore-mcp turns apcore modules into MCP tools (and OpenAI-compatible tool schemas) automatically: it converts schemas, maps behavior annotations, routes execution back to apcore, and serves it all as an MCP server over stdio, Streamable HTTP, or SSE.
 
 ## Start Here
 
@@ -16,17 +16,26 @@ apcore-mcp turns apcore modules into MCP tools (and OpenAI-compatible tool schem
 - [Schema Converter](https://apcore-mcp.aiperceivable.com/features/schema-converter/): Converts apcore module schemas into MCP tool input schemas.
 - [Annotation Mapper](https://apcore-mcp.aiperceivable.com/features/annotation-mapper/): Maps apcore behavior annotations onto MCP tool metadata.
 - [Execution Router](https://apcore-mcp.aiperceivable.com/features/execution-router/): Routes MCP tool calls back to the apcore executor.
+- [Error Mapper](https://apcore-mcp.aiperceivable.com/features/error-mapper/): Translates apcore errors into MCP error responses with AI guidance metadata.
 - [MCP Server Factory](https://apcore-mcp.aiperceivable.com/features/mcp-server-factory/): Builds a ready-to-run MCP server from registered apcore modules.
 - [OpenAI Converter](https://apcore-mcp.aiperceivable.com/features/openai-converter/): Emits OpenAI-compatible tool/function schemas from the same modules.
+- [Extension Bridge](https://apcore-mcp.aiperceivable.com/features/extension-bridge/): Planned injection points for replacing the built-in converters and mappers.
 - [Transport Manager](https://apcore-mcp.aiperceivable.com/features/transport-manager/): Manages stdio/HTTP transports for the MCP server.
+- [Registry Listener](https://apcore-mcp.aiperceivable.com/features/registry-listener/): Keeps the exposed tool list in step with registry changes.
 - [JWT Authenticator](https://apcore-mcp.aiperceivable.com/features/jwt-authenticator/): Authenticates MCP callers via JWT at the bridge layer.
+- [Approval Handler](https://apcore-mcp.aiperceivable.com/features/approval-handler/): Bridges MCP elicitation to apcore's runtime approval gate.
+- [Approval Handler (Phase B)](https://apcore-mcp.aiperceivable.com/features/approval-phase-b/): Storage-backed approval flow for out-of-band decisions.
+- [Async Task Bridge](https://apcore-mcp.aiperceivable.com/features/async-task-bridge/): Runs long-lived modules as tasks with submit/status/cancel meta-tools.
 - [Explorer UI](https://apcore-mcp.aiperceivable.com/features/explorer-ui/): Browser UI to inspect and test exposed MCP tools.
+- [Markdown](https://apcore-mcp.aiperceivable.com/features/markdown/): Renders rich Markdown tool descriptions from apcore-toolkit.
 
 ## Specifications
 
 - [Product Requirements](https://apcore-mcp.aiperceivable.com/prd-apcore-mcp/): Goals, scope, and requirements for the MCP bridge.
 - [Software Requirements](https://apcore-mcp.aiperceivable.com/srs-apcore-mcp/): Detailed functional and non-functional requirements.
 - [Technical Design](https://apcore-mcp.aiperceivable.com/tech-design-apcore-mcp/): Architecture and component design of the bridge.
+- [Test Plan](https://apcore-mcp.aiperceivable.com/test-plan-apcore-mcp/): Test strategy and the per-requirement test cases every SDK must satisfy.
+- [Examples Standard](https://apcore-mcp.aiperceivable.com/examples-spec/): Normative cross-language layout every apcore-mcp implementation's examples must follow.
 
 ## Ecosystem
 
@@ -41,6 +50,6 @@ apcore-mcp turns apcore modules into MCP tools (and OpenAI-compatible tool schem
 
 - Bridges apcore modules to MCP (Model Context Protocol) and OpenAI tools automatically.
 - Zero code changes to existing apcore modules.
-- Can act as an MCP gateway aggregating upstream MCP servers.
+- Long-running modules run as async tasks with submit/status/cancel meta-tools.
 - Supports JWT auth, multiple transports, and an Explorer UI.
 - Open source. Source: https://github.com/aiperceivable/apcore-mcp

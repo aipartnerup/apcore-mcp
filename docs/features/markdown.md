@@ -18,9 +18,26 @@ The helpers are intentionally thin: every public symbol either calls into apcore
 
 **Included:**
 - `is_available` / `isMarkdownAvailable` — detect at runtime whether apcore-toolkit's Markdown renderer is importable.
-- `render_module_markdown(descriptor)` (Python+Rust) / `renderModuleMarkdownSync(descriptor)` (TS) — return rendered Markdown for a module, or `None`/`null` when toolkit is unavailable.
+- `render_module_markdown(descriptor)` (Python) / `render_module_markdown(descriptor, display: bool)` (Rust — the extra `display` flag selects the toolkit's display style) / `renderModuleMarkdownSync(descriptor)` (TS) — return rendered Markdown for a module, or `None`/`null` when the toolkit is unavailable or the render produced a non-text variant.
 - `descriptor_to_scanned_module(descriptor)` (Python+Rust) — internal-but-public adapter from `ModuleDescriptor` to `ScannedModule` (the toolkit input type).
-- `prime_markdown_toolkit()` / `primeMarkdownToolkit()` (TS-primary, no-op in Python+Rust) — pre-load the dynamically-imported renderer module so subsequent calls are synchronous.
+- `prime_markdown_toolkit()` / `primeMarkdownToolkit()` — pre-load the dynamically-imported renderer module so subsequent calls are synchronous. **TypeScript and Rust only.** Python has no such symbol (its toolkit import is synchronous and there is nothing to prime); do not write Python code that calls it.
+
+> **Reachability (0.17.x) — measured, not inferred.**
+>
+> - **TypeScript: none of these helpers are importable from the package.** `isMarkdownAvailable`,
+>   `primeMarkdownToolkit` and `renderModuleMarkdownSync` are exported from `src/markdown.ts` but
+>   are **not** re-exported by `src/index.ts`, and `package.json` declares `exports` as `"."` only —
+>   so there is no subpath to reach them either. `import { primeMarkdownToolkit } from "apcore-mcp"`
+>   does not resolve. The "Required call site (TypeScript)" in the `prime_markdown_toolkit` contract
+>   below is therefore not satisfiable by a package consumer today; it applies to in-repo callers.
+> - **Python: `prime_markdown_toolkit` does not exist**, and `markdown.__all__` lists only
+>   `is_available`, `render_module_markdown`, `descriptor_to_scanned_module`.
+> - **Rust: `is_available()` returns `true` unconditionally.** `lib.rs` declares `pub mod markdown;`
+>   with no `[features]` gate, so apcore-toolkit is a compile-time dependency — if the crate links,
+>   the renderer is present. The "toolkit unavailable → `None`" row below cannot arise in Rust.
+> - Separately, the `rich_description` flag that makes any of this reach an MCP client is not
+>   exposed on `serve()` / `async_serve()` / the CLI in any SDK — only on `MCPServerFactory`
+>   directly. See PRD F-047 / F-049.
 
 **Excluded:**
 - Implementation of the Markdown renderer itself (lives in apcore-toolkit; this feature only adapts to it).
@@ -29,7 +46,7 @@ The helpers are intentionally thin: every public symbol either calls into apcore
 
 ## Core Responsibilities
 
-1. **Toolkit Detection** — `is_available` checks whether apcore-toolkit's Markdown renderer can be imported in this process. Result MUST be cached after the first successful resolution; subsequent calls do not re-import.
+1. **Toolkit Detection** — `is_available` checks whether apcore-toolkit's Markdown renderer can be imported in this process. Result MUST be cached after the first successful resolution; subsequent calls do not re-import. (Python memoizes with `lru_cache`; TypeScript caches the resolved dynamic import; Rust links the toolkit statically and returns a constant `true`.)
 2. **Renderer Adapter** — `render_module_markdown` builds the `ScannedModule` view (`descriptor_to_scanned_module`) and forwards to apcore-toolkit's `render_module(...)` when available.
 3. **Prime-on-Startup (TS)** — `primeMarkdownToolkit()` resolves the dynamic `import("apcore-toolkit/markdown")` Promise so that synchronous `renderModuleMarkdownSync(descriptor)` callers see a populated cache.
 

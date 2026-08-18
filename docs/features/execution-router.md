@@ -213,7 +213,7 @@ Per-language idiom — there is **no** `from_executor` factory; the router is co
 - executor: Any, required (duck-typed in Python/TS; `Box<dyn Executor>` in Rust) — must expose async `call_async(module_id, inputs, context?)` method (Python/TS) or implement the `Executor` trait (Rust)
 - validate_inputs / validateInputs: bool, optional, default=false
 - output_formatter / outputFormatter: callable | None, optional
-- redact_output / redactOutput: bool, optional, default=true (Python/TS); Rust toggles via `with_redact_output(true)` (default false)
+- redact_output / redactOutput: bool, optional, default=**true in all three**. Rust sets it in its constructors (`router.rs:473,497,524`) and exposes `with_redact_output(bool)` to turn it off; an earlier revision of this spec said Rust defaulted to false, which would have made Rust the one bridge that leaked `x-sensitive` output by default.
 - output_schema_map / outputSchemaMap: dict | None, optional (Rust uses `with_output_schemas(...)`)
 - trace: bool, optional, default=false
 - async_bridge / asyncTaskBridge: AsyncTaskBridge | None, optional (Rust accepts `Arc<AsyncTaskBridge>` via `with_async_bridge(...)`)

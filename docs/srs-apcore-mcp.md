@@ -33,6 +33,7 @@ description: "IEEE 830 Software Requirements Specification for apcore-mcp: funct
 | 1.8     | 2026-04-06 | aiperceivable Engineering Team | apcore 0.17.0 feature integration: Pipeline Strategy (F-036), Trace Exposure (F-037), Output Redaction (F-038), Preflight Validation (F-039), YAML Pipeline Config (F-040), Annotation Metadata Passthrough (F-041), 4 new error mappings, 2 new NFRs |
 | 1.9     | 2026-04-23 | aiperceivable Engineering Team | apcore 0.19.0 + apcore-toolkit 0.5.0: Extension Bridge (F-042) and Async Task Bridge (F-043) requirements; FR-EXTMGR-001..003, FR-ASYNC-001..006 added; isinstance-based error dispatch; W3C Trace Context propagation; observability auto-wiring |
 | 2.0     | 2026-04-28 | aiperceivable Engineering Team | Cross-language deferred-modules sync (released as 0.14.0): mcp-embedded-ui 0.4.0 dependency raised + `/validate` endpoint flow-through; cross-SDK API unification (JWT-1 `Authenticator` headers-map signature, OC-5 Rust `convert_registry` Registry-trait input); Python TM-4 transport-disconnect cancellation forwarding; EM-3 hardcoded `userFixable` for dependency/binding errors; EM-6 Rust generic-error fallback; MID-5 bijection-guarded denormalize variants; OC-1 TS strict-mode walker parity; AH-1 Rust per-request elicit task-local; EB-2 adapter-hook kwargs in `serve()` (Python+TS) |
+| 2.1     | 2026-08-18 | aiperceivable Engineering Team | Cross-language spec-correctness sync against all three SDKs at 0.17.2 (released as docs 0.18.0). Corrected `handle_call` / `to_mcp_error` / `to_mcp_annotations` return types (call-result tuple and plain dicts, not MCP SDK objects); §8.1.1 / §8.1.1a now carry the complete 37- and 32-parameter `serve()` / `async_serve()` signatures and §7.8 is marked a partial constraints table; `exempt_paths` is a set defaulting to `{/health, /metrics}`; the parameter is `middleware`, not `middlewares`; FR-REDACT-001's empty-`{}` boundary condition corrected to match FR-REDACT-002 and the conformance fixture; `validate_tool` returns a projected dict, not `PreflightResult`; NFR-COMPAT-002 floor raised to apcore 0.27.0; F-045/F-046 names aligned with the PRD; §7.9 records that the `to_openai_tools` `strict` default is not uniform across languages. **Correction to revision 2.0:** its claim that EB-2 shipped adapter-hook kwargs in `serve()` for Python and TypeScript was incorrect — the hooks exist in no SDK and never have; see `features/extension-bridge.md`. |
 
 ---
 
@@ -40,8 +41,8 @@ description: "IEEE 830 Software Requirements Specification for apcore-mcp: funct
 
 1. [Introduction](#1-introduction)
 2. [Overall Description](#2-overall-description)
-3. [Specific Requirements -- Functional Requirements](#3-specific-requirements--functional-requirements)
-4. [Specific Requirements -- Non-Functional Requirements](#4-specific-requirements--non-functional-requirements)
+3. [Specific Requirements -- Functional Requirements](#3-specific-requirements-functional-requirements)
+4. [Specific Requirements -- Non-Functional Requirements](#4-specific-requirements-non-functional-requirements)
 5. [Use Cases](#5-use-cases)
 6. [CRUD Matrix](#6-crud-matrix)
 7. [Data Dictionary](#7-data-dictionary)
@@ -98,7 +99,9 @@ apcore-mcp does NOT reimplement the MCP protocol (it uses the official `mcp` Pyt
 | **$ref inlining** | The process of resolving JSON Schema `$ref` references by substituting the referenced definition in-place and removing the `$defs` section. |
 | **Module ID normalization** | Converting apcore module IDs (dot-notation, e.g., `image.resize`) to OpenAI-compatible function names (e.g., `image-resize`) by replacing `.` with `-`. |
 | **xxx-apcore** | Convention for apcore adapter projects targeting specific domains: `comfyui-apcore`, `vnpy-apcore`, `blender-apcore`, etc. |
-| **CallToolResult** | MCP SDK type representing the result of a tool call, containing `content` (list of content items) and `isError` (boolean). |
+| **CallToolResult** | MCP SDK type representing the result of a tool call, containing `content` (list of content items) and `isError` (boolean). This is the **protocol-level** result the MCP client observes. The bridge's own components never construct it — the MCP SDK server layer does, from the call-result tuple below. |
+| **Call-result tuple** | What `ExecutionRouter.handle_call()` actually returns: `(content, is_error, trace_id)` — `content` a list of `{"type": "text", "text": str}` dicts, `is_error` a bool, `trace_id` a string or None. The MCP SDK handler registered by `MCPServerFactory` turns the first two into a `CallToolResult`. Wherever this SRS says handle_call "returns a CallToolResult", read it as "produces the tuple the SDK renders as that CallToolResult". |
+| **Error response dict** | What `ErrorMapper.to_mcp_error()` returns: a plain dict with `isError`, `errorType`, `message`, `details`, and the AI-guidance keys `retryable` / `aiGuidance` / `userFixable` / `suggestion` (camelCase on the wire). It is not an MCP SDK object; the router lifts `message` into the content items. |
 | **TextContent** | MCP SDK type for text-based content items within a CallToolResult. |
 | **ToolAnnotations** | MCP SDK type for behavioral hints on tools: `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`. |
 | **JSON Schema** | A vocabulary for annotating and validating JSON documents (draft 2020-12 or compatible). |
@@ -365,6 +368,12 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 
 ### 3.2 FR-ANNOT: Annotation Mapping Requirements
 
+`AnnotationMapper.to_mcp_annotations()` returns a plain dict keyed in MCP wire casing
+(`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`), not an MCP SDK
+`ToolAnnotations` instance. `MCPServerFactory` passes that dict straight into the `Tool` it builds.
+`ToolAnnotations(...)` in the requirements below names the shape of the resulting object as the
+client sees it.
+
 ---
 
 #### FR-ANNOT-001: Map destructive annotation to MCP destructiveHint
@@ -376,7 +385,7 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 | **Priority** | P0 |
 | **Traces to** | F-002 |
 
-**Description:** When `ModuleAnnotations.destructive` is `True`, the `AnnotationMapper.to_mcp_annotations()` method shall return a `ToolAnnotations` instance with `destructiveHint=True`. When `False`, it shall return `destructiveHint=False`.
+**Description:** When `ModuleAnnotations.destructive` is `True`, the `AnnotationMapper.to_mcp_annotations()` method shall return an annotations dict with `destructiveHint=True`. When `False`, it shall return `destructiveHint=False`.
 
 **Input/Trigger:** A `ModuleAnnotations` instance with `destructive` field set.
 
@@ -399,7 +408,7 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 | **Priority** | P0 |
 | **Traces to** | F-002 |
 
-**Description:** When `ModuleAnnotations.readonly` is `True`, the `AnnotationMapper.to_mcp_annotations()` method shall return a `ToolAnnotations` instance with `readOnlyHint=True`. When `False`, it shall return `readOnlyHint=False`.
+**Description:** When `ModuleAnnotations.readonly` is `True`, the `AnnotationMapper.to_mcp_annotations()` method shall return an annotations dict with `readOnlyHint=True`. When `False`, it shall return `readOnlyHint=False`.
 
 **Input/Trigger:** A `ModuleAnnotations` instance with `readonly` field set.
 
@@ -422,7 +431,7 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 | **Priority** | P0 |
 | **Traces to** | F-002 |
 
-**Description:** When `ModuleAnnotations.idempotent` is `True`, the `AnnotationMapper.to_mcp_annotations()` method shall return a `ToolAnnotations` instance with `idempotentHint=True`. When `False`, it shall return `idempotentHint=False`.
+**Description:** When `ModuleAnnotations.idempotent` is `True`, the `AnnotationMapper.to_mcp_annotations()` method shall return an annotations dict with `idempotentHint=True`. When `False`, it shall return `idempotentHint=False`.
 
 **Input/Trigger:** A `ModuleAnnotations` instance with `idempotent` field set.
 
@@ -445,7 +454,7 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 | **Priority** | P0 |
 | **Traces to** | F-002 |
 
-**Description:** When `ModuleAnnotations.open_world` is `True`, the `AnnotationMapper.to_mcp_annotations()` method shall return a `ToolAnnotations` instance with `openWorldHint=True`. When `False`, it shall return `openWorldHint=False`.
+**Description:** When `ModuleAnnotations.open_world` is `True`, the `AnnotationMapper.to_mcp_annotations()` method shall return an annotations dict with `openWorldHint=True`. When `False`, it shall return `openWorldHint=False`.
 
 **Input/Trigger:** A `ModuleAnnotations` instance with `open_world` field set.
 
@@ -468,7 +477,7 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 | **Priority** | P0 |
 | **Traces to** | F-002 |
 
-**Description:** When the `annotations` parameter is `None`, the `AnnotationMapper.to_mcp_annotations()` method shall return a `ToolAnnotations` instance with all fields set to their MCP defaults: `readOnlyHint=False`, `destructiveHint=False`, `idempotentHint=False`, `openWorldHint=True`.
+**Description:** When the `annotations` parameter is `None`, the `AnnotationMapper.to_mcp_annotations()` method shall return an annotations dict with all fields set to their MCP defaults: `readOnlyHint=False`, `destructiveHint=False`, `idempotentHint=False`, `openWorldHint=True`.
 
 **Input/Trigger:** `annotations=None`.
 
@@ -550,11 +559,11 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 | **Priority** | P0 |
 | **Traces to** | F-003 |
 
-**Description:** The `ExecutionRouter.handle_call()` async method shall receive a tool name (string) and arguments (dict), invoke `Executor.call_async(tool_name, arguments)`, and return the result as a `CallToolResult`. The tool name equals the apcore `module_id`.
+**Description:** The `ExecutionRouter.handle_call()` async method shall receive a tool name (string), arguments (dict) and an optional `extra` dict, invoke `Executor.call_async(tool_name, arguments)`, and return the call-result tuple `(content, is_error, trace_id)`. The MCP SDK handler renders that tuple as the `CallToolResult` the client sees. The tool name equals the apcore `module_id`.
 
 **Input/Trigger:** MCP `tools/call` request with `name` (string) and `arguments` (dict).
 
-**Expected Output:** On success, a `CallToolResult` with `isError=False` and `content` containing a `TextContent` item whose `text` is the JSON-serialized module output dict.
+**Expected Output:** On success, `(content, False, trace_id)` where `content` is a single `{"type": "text", "text": <json>}` item holding the JSON-serialized module output dict — observed by the client as a `CallToolResult` with `isError=False`.
 
 **Boundary Conditions:**
 - Empty arguments dict `{}`: Pass `{}` to `Executor.call_async()`.
@@ -573,11 +582,11 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 | **Priority** | P0 |
 | **Traces to** | F-003, F-013 |
 
-**Description:** On successful execution, the `ExecutionRouter` shall serialize the module output dict to a JSON string using `json.dumps()` with `default=str` to handle non-serializable types (e.g., `datetime`, `Path`, `UUID`). The JSON string shall be wrapped in a `TextContent(type="text", text=<json_string>)` within the `CallToolResult`.
+**Description:** On successful execution, the `ExecutionRouter` shall serialize the module output dict to a JSON string using `json.dumps()` with `default=str` to handle non-serializable types (e.g., `datetime`, `Path`, `UUID`). The JSON string shall be wrapped in a `{"type": "text", "text": <json_string>}` content item, which the SDK renders as `TextContent` inside the `CallToolResult`.
 
 **Input/Trigger:** A `dict[str, Any]` returned by `Executor.call_async()`.
 
-**Expected Output:** `CallToolResult(content=[TextContent(type="text", text=<json_string>)], isError=False)`.
+**Expected Output:** `([{"type": "text", "text": <json_string>}], False, trace_id)` — on the wire, `CallToolResult(content=[TextContent(type="text", text=<json_string>)], isError=False)`.
 
 **Boundary Conditions:**
 - Empty output dict `{}`: Serialize as `"{}"`.
@@ -586,7 +595,7 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 - Output containing `bytes`: Convert to string via `default=str`.
 
 **Error Conditions:**
-- If serialization fails even with `default=str`: Return a `CallToolResult` with `isError=True` and message "Failed to serialize module output".
+- If serialization fails even with `default=str`: Return `is_error=True` with message "Failed to serialize module output".
 
 ---
 
@@ -695,15 +704,15 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 | Field | Value |
 |-------|-------|
 | **ID** | FR-EXEC-007 |
-| **Title** | handle_call() catches all exceptions and returns CallToolResult |
+| **Title** | handle_call() catches all exceptions and returns an error tuple |
 | **Priority** | P0 |
 | **Traces to** | F-003, F-004 |
 
-**Description:** The `ExecutionRouter.handle_call()` method shall never propagate exceptions to the MCP Server layer. All exceptions -- whether apcore `ModuleError` subclasses or unexpected `Exception` instances -- shall be caught and converted to a `CallToolResult` with `isError=True` via the `ErrorMapper`.
+**Description:** The `ExecutionRouter.handle_call()` method shall never propagate exceptions to the MCP Server layer. All exceptions -- whether apcore `ModuleError` subclasses or unexpected `Exception` instances -- shall be caught and converted, via the `ErrorMapper`, into a call-result tuple whose `is_error` is `True`.
 
 **Input/Trigger:** Any exception raised during `Executor.call_async()` execution.
 
-**Expected Output:** A `CallToolResult` with `isError=True` and appropriate error message (see FR-ERROR section).
+**Expected Output:** `(content, True, trace_id)` with an appropriate error message (see FR-ERROR section), observed by the client as a `CallToolResult` with `isError=True`.
 
 **Boundary Conditions:** None.
 
@@ -712,6 +721,16 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 ---
 
 ### 3.4 FR-ERROR: Error Mapping Requirements
+
+`ErrorMapper.to_mcp_error()` returns an **error response dict**, not an MCP SDK object. Every
+requirement in this section describes that dict; the `CallToolResult(...)` shown under **Expected
+Output** is what the MCP client observes after `ExecutionRouter` lifts `message` into the content
+items and the SDK renders the result.
+
+The envelope carries `isError`, `errorType`, `message`, `details`, and the AI-guidance keys. **The
+AI-guidance keys are camelCase on the wire** — `retryable`, `aiGuidance`, `userFixable`,
+`suggestion` — even though the apcore-side source attributes they are read from are snake_case. A
+client indexing `response["ai_guidance"]` gets a KeyError. See `features/error-mapper.md`.
 
 ---
 
@@ -724,7 +743,7 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 | **Priority** | P0 |
 | **Traces to** | F-004 |
 
-**Description:** When `Executor.call_async()` raises `ModuleNotFoundError`, the `ErrorMapper.to_mcp_error()` method shall return a `CallToolResult` with `isError=True` and text content `"Module not found: {module_id}"` where `{module_id}` is the value from `error.details["module_id"]`.
+**Description:** When `Executor.call_async()` raises `ModuleNotFoundError`, the `ErrorMapper.to_mcp_error()` method shall return an error response dict with `isError=True` whose `message` is `"Module not found: {module_id}"` where `{module_id}` is the value from `error.details["module_id"]`.
 
 **Input/Trigger:** `ModuleNotFoundError(module_id="image.resize")`.
 
@@ -747,7 +766,7 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 | **Priority** | P0 |
 | **Traces to** | F-004 |
 
-**Description:** When `Executor.call_async()` raises `SchemaValidationError`, the `ErrorMapper` shall return a `CallToolResult` with `isError=True` and text content formatted as:
+**Description:** When `Executor.call_async()` raises `SchemaValidationError`, the `ErrorMapper` shall return an error response dict with `isError=True` whose `message` is formatted as:
 ```
 Input validation failed:
 - {field}: {message} ({code})
@@ -778,7 +797,7 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 | **Priority** | P0 |
 | **Traces to** | F-004 |
 
-**Description:** When `Executor.call_async()` raises `ACLDeniedError`, the `ErrorMapper` shall return a `CallToolResult` with `isError=True` and text content `"Access denied"`. The `caller_id` and `target_id` from the error details shall NOT be included in the MCP response to prevent leaking security-sensitive information.
+**Description:** When `Executor.call_async()` raises `ACLDeniedError`, the `ErrorMapper` shall return an error response dict with `isError=True` whose `message` is `"Access denied"`. The `caller_id` and `target_id` from the error details shall NOT be included in the MCP response to prevent leaking security-sensitive information.
 
 **Input/Trigger:** `ACLDeniedError(caller_id="mcp_client_123", target_id="admin.delete_all")`.
 
@@ -801,7 +820,7 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 | **Priority** | P0 |
 | **Traces to** | F-004 |
 
-**Description:** When `Executor.call_async()` raises `ModuleTimeoutError`, the `ErrorMapper` shall return a `CallToolResult` with `isError=True` and text content `"Module timed out after {timeout_ms}ms"` where `{timeout_ms}` is from `error.details["timeout_ms"]`.
+**Description:** When `Executor.call_async()` raises `ModuleTimeoutError`, the `ErrorMapper` shall return an error response dict with `isError=True` whose `message` is `"Module timed out after {timeout_ms}ms"` where `{timeout_ms}` is from `error.details["timeout_ms"]`.
 
 **Input/Trigger:** `ModuleTimeoutError(module_id="slow.module", timeout_ms=30000)`.
 
@@ -824,7 +843,7 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 | **Priority** | P0 |
 | **Traces to** | F-004 |
 
-**Description:** When `Executor.call_async()` raises `InvalidInputError`, the `ErrorMapper` shall return a `CallToolResult` with `isError=True` and text content `"Invalid input: {message}"` where `{message}` is `error.message`.
+**Description:** When `Executor.call_async()` raises `InvalidInputError`, the `ErrorMapper` shall return an error response dict with `isError=True` whose `message` is `"Invalid input: {message}"` where `{message}` is `error.message`.
 
 **Input/Trigger:** `InvalidInputError(message="module_id must be a non-empty string")`.
 
@@ -845,7 +864,7 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 | **Priority** | P0 |
 | **Traces to** | F-004 |
 
-**Description:** When `Executor.call_async()` raises `CallDepthExceededError`, the `ErrorMapper` shall return a `CallToolResult` with `isError=True` and text content `"Call depth limit exceeded"`. The call chain details shall NOT be included in the MCP response.
+**Description:** When `Executor.call_async()` raises `CallDepthExceededError`, the `ErrorMapper` shall return an error response dict with `isError=True` whose `message` is `"Call depth limit exceeded"`. The call chain details shall NOT be included in the MCP response.
 
 **Input/Trigger:** `CallDepthExceededError(depth=33, max_depth=32, call_chain=[...])`.
 
@@ -866,7 +885,7 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 | **Priority** | P0 |
 | **Traces to** | F-004 |
 
-**Description:** When `Executor.call_async()` raises `CircularCallError`, the `ErrorMapper` shall return a `CallToolResult` with `isError=True` and text content `"Circular call detected"`. The module_id and call chain details shall NOT be included in the MCP response.
+**Description:** When `Executor.call_async()` raises `CircularCallError`, the `ErrorMapper` shall return an error response dict with `isError=True` whose `message` is `"Circular call detected"`. The module_id and call chain details shall NOT be included in the MCP response.
 
 **Input/Trigger:** `CircularCallError(module_id="a.module", call_chain=["a.module", "b.module", "a.module"])`.
 
@@ -887,7 +906,7 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 | **Priority** | P0 |
 | **Traces to** | F-004 |
 
-**Description:** When `Executor.call_async()` raises `CallFrequencyExceededError`, the `ErrorMapper` shall return a `CallToolResult` with `isError=True` and text content `"Call frequency limit exceeded"`.
+**Description:** When `Executor.call_async()` raises `CallFrequencyExceededError`, the `ErrorMapper` shall return an error response dict with `isError=True` whose `message` is `"Call frequency limit exceeded"`.
 
 **Input/Trigger:** `CallFrequencyExceededError(module_id="spammy.module", count=4, max_repeat=3, call_chain=[...])`.
 
@@ -908,7 +927,7 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 | **Priority** | P0 |
 | **Traces to** | F-004 |
 
-**Description:** When `Executor.call_async()` raises any exception that is NOT a subclass of `ModuleError`, the `ErrorMapper` shall return a `CallToolResult` with `isError=True` and text content `"Internal error occurred"`. The original exception message, class name, and stack trace shall NOT be included in the MCP response. The full exception shall be logged at ERROR level via the `apcore_mcp` logger with the complete stack trace for debugging.
+**Description:** When `Executor.call_async()` raises any exception that is NOT a subclass of `ModuleError`, the `ErrorMapper` shall return an error response dict with `isError=True` whose `message` is `"Internal error occurred"`. The original exception message, class name, and stack trace shall NOT be included in the MCP response. The full exception shall be logged at ERROR level via the `apcore_mcp` logger with the complete stack trace for debugging.
 
 **Input/Trigger:** Any `Exception` not inheriting from `ModuleError` (e.g., `RuntimeError("disk full")`, `KeyError("missing_key")`).
 
@@ -932,7 +951,7 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 | **Priority** | P0 |
 | **Traces to** | F-004 |
 
-**Description:** When `Executor.call_async()` raises a `ModuleError` subclass not explicitly mapped by FR-ERROR-001 through FR-ERROR-008 (e.g., future error types added to apcore), the `ErrorMapper` shall return a `CallToolResult` with `isError=True` and text content `"Module error: {error.code}"`.
+**Description:** When `Executor.call_async()` raises a `ModuleError` subclass not explicitly mapped by FR-ERROR-001 through FR-ERROR-008 (e.g., future error types added to apcore), the `ErrorMapper` shall return an error response dict with `isError=True` whose `message` is `"Module error: {error.code}"`.
 
 **Input/Trigger:** A `ModuleError` subclass not in the explicit mapping table (e.g., `ConfigError`, `SchemaNotFoundError`).
 
@@ -995,7 +1014,7 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 | **Priority** | P1 |
 | **Traces to** | F-004 |
 
-**Description:** When `ConfigEnvMapConflictError` is raised (two Config Bus namespaces claim the same env var), the `ErrorMapper` shall return a `CallToolResult` with `isError=True` and text `"Config env map conflict: {env_var}"`.
+**Description:** When `ConfigEnvMapConflictError` is raised (two Config Bus namespaces claim the same env var), the `ErrorMapper` shall return an error response dict with `isError=True` whose `message` is `"Config env map conflict: {env_var}"`.
 
 **Input/Trigger:** `ConfigEnvMapConflictError(env_var="APCORE_MCP_PORT", owner="other_ns")`.
 
@@ -1016,7 +1035,7 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 | **Priority** | P1 |
 | **Traces to** | F-004 |
 
-**Description:** When `PipelineAbortError` is raised (a pipeline step aborts execution), the `ErrorMapper` shall return a `CallToolResult` with `isError=True` and text `"Pipeline aborted at step: {step_name}"`. The step's `explanation` field, if present, is appended.
+**Description:** When `PipelineAbortError` is raised (a pipeline step aborts execution), the `ErrorMapper` shall return an error response dict with `isError=True` whose `message` is `"Pipeline aborted at step: {step_name}"`. The step's `explanation` field, if present, is appended.
 
 **Input/Trigger:** `PipelineAbortError(step="acl_check", explanation="Access denied by rule #3")`.
 
@@ -1038,7 +1057,7 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 | **Priority** | P1 |
 | **Traces to** | F-004 |
 
-**Description:** When `StepNotFoundError` is raised (a referenced pipeline step does not exist), the `ErrorMapper` shall return a `CallToolResult` with `isError=True` and text `"Pipeline step not found: {message}"`.
+**Description:** When `StepNotFoundError` is raised (a referenced pipeline step does not exist), the `ErrorMapper` shall return an error response dict with `isError=True` whose `message` is `"Pipeline step not found: {message}"`.
 
 **Input/Trigger:** `StepNotFoundError("Step 'custom_auth' not found in strategy")`.
 
@@ -1059,7 +1078,7 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 | **Priority** | P1 |
 | **Traces to** | F-004 |
 
-**Description:** When `VersionIncompatibleError` is raised (module version negotiation fails), the `ErrorMapper` shall return a `CallToolResult` with `isError=True` and text `"Version incompatible: {message}"`.
+**Description:** When `VersionIncompatibleError` is raised (module version negotiation fails), the `ErrorMapper` shall return an error response dict with `isError=True` whose `message` is `"Version incompatible: {message}"`.
 
 **Input/Trigger:** `VersionIncompatibleError("Requested v2.0 but module provides v1.x")`.
 
@@ -3125,8 +3144,8 @@ Workflow Hints: ...
 **Expected Output:** MCP response text: `{"token": "***REDACTED***", "status": "ok"}`.
 
 **Boundary Conditions:**
-- Empty `output_schema` `{}` → no redaction performed (no schema to match).
-- Module with no `output_schema` → no redaction.
+- Empty `output_schema` `{}` → still passed to `redact_sensitive()`. No field is redacted *by schema* (there is nothing marked `x-sensitive`), but the prefix rule of FR-REDACT-002 still applies: `_secret_*` keys are masked. Do not read this row as "redaction is skipped".
+- Module with no `output_schema` at all (the schema map has no entry for the tool) → redaction is skipped entirely and the output is returned unchanged.
 - Nested objects → recursive schema traversal.
 
 **Error Conditions:** Redaction failure (malformed schema) → log WARNING, return unredacted output (fail-open for availability, log for audit).
@@ -3191,15 +3210,15 @@ Workflow Hints: ...
 | **Priority** | P2 |
 | **Traces to** | F-039 |
 
-**Description:** `ExecutionRouter` shall provide `validate_tool(tool_name: str, arguments: dict) -> PreflightResult` which calls `Executor.validate(module_id, inputs)`. Returns `PreflightResult` with per-check pass/fail for: module_id, call_chain, acl, schema.
+**Description:** `ExecutionRouter` shall provide `validate_tool(tool_name, arguments)`, which calls `Executor.validate(module_id, inputs)` and **projects the upstream `PreflightResult` into a plain dict** — `{valid: bool, checks: [{check, passed, error, warnings}], requires_approval: bool}` — with per-check pass/fail for module_id, call_chain, acl and schema. `PreflightResult` is an apcore type; no SDK re-exports it and no bridge method returns it. Python's `validate_tool` is **synchronous**; TypeScript's `validateTool` and Rust's `validate_tool` are async. When the executor does not implement `validate()` at all, all three return `{valid: true, checks: [], requires_approval: false}` — a validate-less executor has nothing to object to.
 
 **Input/Trigger:** `router.validate_tool("image.resize", {"width": 800})`.
 
-**Expected Output:** `PreflightResult(valid=True, checks=[...], requires_approval=False)`.
+**Expected Output:** `{"valid": True, "checks": [...], "requires_approval": False}`.
 
 **Boundary Conditions:**
-- Non-existent module → `PreflightResult(valid=False, checks=[PreflightCheckResult(check="module_lookup", passed=False, ...)])`.
-- Invalid inputs → `PreflightResult(valid=False, checks=[..., PreflightCheckResult(check="schema", passed=False, error={...})])`.
+- Non-existent module → `{"valid": False, "checks": [{"check": "module_lookup", "passed": False, ...}]}`.
+- Invalid inputs → `{"valid": False, "checks": [..., {"check": "schema", "passed": False, "error": {...}}]}`.
 
 **Error Conditions:** Unexpected exceptions → caught and returned as failed check.
 
@@ -3214,7 +3233,7 @@ Workflow Hints: ...
 | **Priority** | P2 |
 | **Traces to** | F-039, F-026 |
 
-**Description:** When Explorer is enabled, `POST /explorer/tools/<name>/validate` shall accept a JSON body with tool arguments, call `validate_tool()`, and return `PreflightResult` as JSON.
+**Description:** When Explorer is enabled, `POST /explorer/tools/<name>/validate` shall accept a JSON body with tool arguments, call `validate_tool()`, and return its projected dict as JSON.
 
 **Input/Trigger:** `POST /explorer/tools/image.resize/validate` with body `{"width": "not_a_number"}`.
 
@@ -3645,12 +3664,12 @@ mcp:
 | Field | Value |
 |-------|-------|
 | **ID** | NFR-COMPAT-002 |
-| **Title** | Compatible with apcore-python >= 0.19.0 |
-| **Target** | apcore >= 0.19.0, < 1.0 |
+| **Title** | Compatible with apcore-python >= 0.27.0 |
+| **Target** | apcore >= 0.27.0 |
 | **Measurement** | Integration tests against latest apcore-python release |
 | **Traces to** | PRD Section 8.3 |
 
-**Description:** apcore-mcp shall declare a dependency on `apcore>=0.19.0,<1.0` and shall be tested against the latest release within that range. Version 0.19.0 is required for the AsyncTaskManager primitives (F-043 Async Task Bridge), W3C TraceContext propagation (FR-EXTMGR / FR-OBSERVABILITY chains), the 12-field ModuleAnnotations dataclass (annotation passthrough — F-041), and the dependency/binding error classes consumed by EM-3 USER_FIXABLE error dispatch. Prior features carried forward: Pipeline v2 delegation (`PipelineEngine.run()`), call-chain guard rename (`safety_check` → `call_chain_guard`), corrected step order (middleware before input validation), Step metadata fields, YAML pipeline configuration, sensitive field redaction utility, Config Bus namespace registration (§9.4), Error Formatter Registry (§8.8), dot-namespaced event types (§9.16), Context `ContextKey[T]`, ACL condition handlers, and `Annotations.extra`.
+**Description:** apcore-mcp shall declare a dependency on `apcore>=0.27.0` and shall be tested against the latest release. All three SDKs pin the same floor at 0.17.2 — `apcore>=0.27.0` (Python), `apcore-js>=0.27.0` (TypeScript), `apcore = "0.27"` (Rust) — alongside `apcore-toolkit>=0.10.0` and `mcp-embedded-ui>=0.4.0`. Note the upper bound was dropped: pin `<1.0` only if a breaking 1.0 is announced. Version **0.19.0** was the floor that first made the current feature set buildable — the AsyncTaskManager primitives (F-043 Async Task Bridge), W3C TraceContext propagation (FR-EXTMGR / FR-OBSERVABILITY chains), the 12-field ModuleAnnotations dataclass (annotation passthrough — F-041), and the dependency/binding error classes consumed by EM-3 USER_FIXABLE error dispatch. Prior features carried forward: Pipeline v2 delegation (`PipelineEngine.run()`), call-chain guard rename (`safety_check` → `call_chain_guard`), corrected step order (middleware before input validation), Step metadata fields, YAML pipeline configuration, sensitive field redaction utility, Config Bus namespace registration (§9.4), Error Formatter Registry (§8.8), dot-namespaced event types (§9.16), Context `ContextKey[T]`, ACL condition handlers, and `Annotations.extra`.
 
 ---
 
@@ -4105,6 +4124,12 @@ mcp:
 
 ### 7.8 serve() Parameter Specification
 
+> **Partial table — constraints only.** The rows below detail validation constraints for the
+> transport, identity, lifecycle and exposure parameters. They are **not** the full parameter list:
+> `serve()` takes 37 keyword parameters at 0.17.2. §8.1.1 carries the complete signature and is
+> authoritative; `features/mcp-server-factory.md` groups the same set by concern. Do not implement
+> against this table alone.
+
 | Parameter | Type | Required | Default | Constraints | Description |
 |-----------|------|----------|---------|-------------|-------------|
 | `registry_or_executor` | `Registry \| Executor` | Yes | N/A | Must be instance of Registry or Executor | Module source and execution engine |
@@ -4127,7 +4152,7 @@ mcp:
 |-----------|------|----------|---------|-------------|-------------|
 | `registry_or_executor` | `Registry \| Executor` | Yes | N/A | Must be instance of Registry or Executor | Module source |
 | `embed_annotations` | `bool` | No | `False` | N/A | Append annotation metadata to descriptions |
-| `strict` | `bool` | No | `False` | N/A | Enable OpenAI strict mode |
+| `strict` | `bool` | No | `False` (Python) / `True` (TypeScript, Rust) | N/A | Enable OpenAI strict mode. **The default is not uniform**: Python's `to_openai_tools()` defaults to `False`, TypeScript's `toOpenaiTools()` to `True`, and Rust's `to_openai_tools(embed_annotations, strict)` takes it positionally with no default (documented call sites pass `true`). The same registry therefore yields permissive schemas from Python and strict ones from the other two. Pass the value explicitly in portable code. |
 | `tags` | `list[str] \| None` | No | `None` | Each tag non-empty | Tag filter |
 | `prefix` | `str \| None` | No | `None` | Non-empty if provided | Prefix filter |
 
@@ -4141,36 +4166,64 @@ mcp:
 
 **Module:** `apcore_mcp`
 
-**Signature:**
+**Signature (complete, 0.17.2 — 37 parameters):**
 ```python
 def serve(
     registry_or_executor: Registry | Executor,
     *,
+    # transport / bind
     transport: str = "stdio",
     host: str = "127.0.0.1",
     port: int = 8000,
+    # identity
     name: str = "apcore-mcp",
     version: str | None = None,
+    # lifecycle
     on_startup: Callable[[], None] | None = None,
     on_shutdown: Callable[[], None] | None = None,
+    # exposure
     tags: list[str] | None = None,
     prefix: str | None = None,
     log_level: str | None = None,
     dynamic: bool = False,
     validate_inputs: bool = False,
-    metrics_collector: MetricsExporter | None = None,
+    metrics_collector: MetricsExporter | bool | None = None,
+    # explorer
     explorer: bool = False,
     explorer_prefix: str = "/explorer",
     allow_execute: bool = False,
+    explorer_title: str = "APCore MCP Explorer",
+    explorer_project_name: str | None = "apcore-mcp",
+    explorer_project_url: str | None = "https://github.com/aiperceivable/apcore-mcp-python",
+    # auth
     authenticator: Authenticator | None = None,
     require_auth: bool = True,
-    exempt_paths: list[str] | None = None,
+    exempt_paths: set[str] | None = None,      # set, not list; None -> {"/health", "/metrics"}
+    # approval (Phase A + Phase B)
     approval_handler: ApprovalHandler | None = None,
+    approval_store: ApprovalStore | None = None,
+    approval_notify: Callable[[dict], None] | None = None,
+    # output
     output_formatter: Callable[[dict], str] | None = None,
+    output_format: str | None = None,
+    strategy: str | None = None,
+    redact_output: bool = True,
+    trace: bool = False,
+    # pipeline
+    middleware: list[Middleware] | None = None,   # singular; `middlewares` is not accepted
+    acl: ACL | None = None,
+    observability: bool = False,
+    # async tasks (F-043)
+    async_tasks: bool = True,
+    async_max_concurrent: int = 10,
+    async_max_tasks: int = 1000,
 ) -> None: ...
 ```
 
 **Behavior:** Blocks until server shutdown. Returns `None`.
+
+**Not accepted:** `extensions`, `schema_converter`, `annotation_mapper`, `error_mapper` — the
+Extension Bridge (F-042 / EB-2) is unimplemented in every SDK. See `features/extension-bridge.md`.
 
 **Exceptions:** `TypeError`, `ValueError`, `OSError`.
 
@@ -4183,6 +4236,9 @@ def serve(
 async def async_serve(
     registry_or_executor: Registry | Executor,
     *,
+    # Identical to serve() minus the six parameters that only make sense when
+    # this function owns the process: transport, host, port, on_startup, on_shutdown.
+    # 32 parameters at 0.17.2.
     name: str = "apcore-mcp",
     version: str | None = None,
     tags: list[str] | None = None,
@@ -4190,15 +4246,30 @@ async def async_serve(
     log_level: str | None = None,
     dynamic: bool = False,
     validate_inputs: bool = False,
-    metrics_collector: MetricsExporter | None = None,
+    metrics_collector: MetricsExporter | bool | None = None,
     explorer: bool = False,
     explorer_prefix: str = "/explorer",
     allow_execute: bool = False,
+    explorer_title: str = "APCore MCP Explorer",
+    explorer_project_name: str | None = "apcore-mcp",
+    explorer_project_url: str | None = "https://github.com/aiperceivable/apcore-mcp-python",
     authenticator: Authenticator | None = None,
     require_auth: bool = True,
-    exempt_paths: list[str] | None = None,
+    exempt_paths: set[str] | None = None,
     approval_handler: ApprovalHandler | None = None,
+    approval_store: ApprovalStore | None = None,
+    approval_notify: Callable[[dict], None] | None = None,
     output_formatter: Callable[[dict], str] | None = None,
+    output_format: str | None = None,
+    strategy: str | None = None,
+    trace: bool = False,
+    redact_output: bool = True,
+    middleware: list[Middleware] | None = None,
+    acl: ACL | None = None,
+    observability: bool = False,
+    async_tasks: bool = True,
+    async_max_concurrent: int = 10,
+    async_max_tasks: int = 1000,
 ) -> AsyncIterator[Starlette]: ...
 ```
 
@@ -4420,8 +4491,8 @@ MCP_ELICIT_KEY: str = "_mcp_elicit"
 | F-042 | Extension Bridge | FR-EXTMGR-001, FR-EXTMGR-002, FR-EXTMGR-003 | -- | -- |
 | F-043 | Async Task Bridge | FR-ASYNC-001, FR-ASYNC-002, FR-ASYNC-003, FR-ASYNC-004, FR-ASYNC-005, FR-ASYNC-006 | -- | -- |
 | F-044 | Bidirectional Cancellation | FR-CANCEL-001, FR-CANCEL-002, FR-CANCEL-003, FR-CANCEL-004 | -- | -- |
-| F-045 | Observability Auto-Wiring | (no FR — covered by tech-design only) | -- | -- |
-| F-046 | Cross-SDK Cancel Dispatcher | (no FR — covered by tech-design only; planned 0.15.0) | -- | -- |
+| F-045 | Decorator Metadata Mapping | §10.3 (SHALL statements; no numbered FR) | -- | -- |
+| F-046 | Custom Middleware Injection | §10.3 (SHALL statements; no numbered FR) | -- | -- |
 
 ### 9.2 FR to PRD Feature Reverse Traceability
 

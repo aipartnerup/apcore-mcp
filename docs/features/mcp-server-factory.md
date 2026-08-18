@@ -148,7 +148,10 @@ In addition to apcore's built-in extension points, the factory exposes three MCP
 | `annotation_mapper` | Default `AnnotationMapper` | `AnnotationMapper` protocol |
 | `error_mapper` | Default `ErrorMapper` | `ErrorMapper` protocol |
 
-These may be supplied directly to `serve()` as keyword arguments or registered on the `ExtensionManager` under the MCP-reserved extension points `mcp_schema_converter`, `mcp_annotation_mapper`, and `mcp_error_mapper` (all single-cardinality). The Extension Bridge resolves the effective instance using the precedence: explicit kwarg > `ExtensionManager` registration > built-in default.
+> **Not implemented (0.17.x).** The three hooks below are a design target. No SDK accepts them —
+> not on `serve()`, not on `MCPServerFactory`. See the Status note in `extension-bridge.md`.
+
+The design is that they may be supplied directly to `serve()` as keyword arguments or registered on the `ExtensionManager` under the MCP-reserved extension points `mcp_schema_converter`, `mcp_annotation_mapper`, and `mcp_error_mapper` (all single-cardinality), with the Extension Bridge resolving the effective instance using the precedence: explicit kwarg > `ExtensionManager` registration > built-in default.
 
 ### Load Order
 The factory applies customizations in a strict order so extensions observe a stable baseline:
@@ -229,19 +232,30 @@ The three Contract blocks below define each step. For HTTP transport, `build_ini
 
 ## Contract: serve
 
+`serve()` is the top-level entry point and its keyword surface is large — 37 parameters in Python at
+0.17.2, 32 for `async_serve()` (which drops the four transport/bind parameters and `on_startup` /
+`on_shutdown`). The groups below are the authoritative list; the SRS §7.8 / §8.1.1 and tech design
+§7.1 signatures are summaries and MUST NOT be read as narrower.
+
 ### Inputs
-- registry: Registry | Executor, required (duck-typed)
-- name: str, optional, default="apcore-mcp"
-- version: str, optional
-- transport: str, optional, default="stdio" — one of "stdio", "streamable-http", "sse"
-- middlewares: list[Middleware] | None, optional — installed after built-in middleware; non-Middleware values raise ValueError before server starts
-- extensions: ExtensionManager | None, optional
-- schema_converter: SchemaConverter | None, optional
-- annotation_mapper: AnnotationMapper | None, optional
-- error_mapper: ErrorMapper | None, optional
+- registry: Registry | Executor, required (duck-typed) — Python names the parameter `registry_or_executor`
+- **Identity:** name (default `"apcore-mcp"`), version
+- **Transport:** transport (default `"stdio"`; one of `"stdio"`, `"streamable-http"`, `"sse"`), host (default `"127.0.0.1"`), port (default `8000`) — `serve()` only
+- **Lifecycle:** on_startup, on_shutdown — `serve()` only
+- **Exposure:** tags, prefix, dynamic (default false), validate_inputs (default false)
+- **Explorer:** explorer (default false), explorer_prefix (default `"/explorer"`), allow_execute (default false), explorer_title, explorer_project_name, explorer_project_url
+- **Auth:** authenticator, require_auth (default **true**), exempt_paths — a **set** of strings, defaulting to `{"/health", "/metrics"}` when omitted, not an empty set
+- **Approval:** approval_handler, approval_store, approval_notify
+- **Output:** output_formatter, output_format, redact_output (default true), strategy, trace (default false)
+- **Pipeline:** middleware (**singular** — `middlewares` is not accepted by any SDK), acl, observability (default false)
+- **Async tasks:** async_tasks (default true), async_max_concurrent (default 10), async_max_tasks (default 1000)
+- **Diagnostics:** log_level, metrics_collector
+
+Not accepted by any SDK: `extensions`, `schema_converter`, `annotation_mapper`, `error_mapper` — see
+the Custom Adapter Hooks note above.
 
 ### Errors
-- ValueError — when middlewares contains non-Middleware values (raised before server starts)
+- ValueError — when middleware contains non-Middleware values (raised before server starts)
 - OSError — when transport bind fails (port already in use)
 
 ### Returns
@@ -320,9 +334,20 @@ The three Contract blocks below define each step. For HTTP transport, `build_ini
 - idempotent: true
 
 ### Display Precedence
-1. `descriptor.annotations.extra["display_overlay"]` (caller's final override) — used as-is when present
-2. Rendered Markdown from `render_module_markdown(descriptor)` — used when `rich_description=True` AND toolkit available
-3. `descriptor.description` (raw) — used when `rich_description=False` OR toolkit unavailable
+The overlay lives at `descriptor.display["mcp"]`, with `descriptor.metadata["display"]["mcp"]` as a
+compatibility fallback for configs that embedded it in metadata. Python and TypeScript read the
+metadata path only; Rust prefers the top-level `descriptor.display` and falls back to metadata.
+There is no `annotations.extra["display_overlay"]` key — no SDK reads one.
+
+Description resolution, highest priority first:
+1. `display.mcp["description"]` (operator-typed hard override) — wins even when `rich_description=True`
+2. Rendered Markdown from `render_module_markdown(descriptor)` — used when `rich_description=True` AND the toolkit is available and the render succeeds
+3. `descriptor.description` (raw) — used when `rich_description=False`, the toolkit is unavailable, or the render returned nothing
+
+Whatever wins, `display.mcp["guidance"]` is then appended as `"\n\nGuidance: {text}"`.
+
+The overlay also carries `display.mcp["alias"]`, which replaces the tool name (`module_id` otherwise).
+It is applied verbatim — not sanitized, not length-capped. See tech design ADR-03.
 
 ---
 

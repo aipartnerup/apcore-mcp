@@ -6,6 +6,216 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.18.0] - 2026-08-19
+
+Spec-correctness release. A full cross-language sync round audited every feature spec and the
+PRD/SRS/tech-design/test-plan chain against all three SDKs at 0.17.2 and found the spec layer had
+drifted from the shipped implementations in both directions — requirements describing signatures no
+SDK has, and specs still describing behaviour that had already been fixed in code. This release
+realigns the documentation with what the bridges actually do, resolves the contradictions the audit
+surfaced, and settles one genuine contract question.
+
+**No SDK release accompanies this one.** Nothing here changes Python or TypeScript behaviour. The
+one item that obligates an implementation change is the `mcp_` extras separator below, which Rust
+must adopt.
+
+### Changed — contract
+
+- **`mcp_` extras separator is now normatively `\n`, not `\n\n`.** The doc chain disagreed with
+  itself: `features/annotation-mapper.md` specified `\n\n` while SRS FR-EXTRAANNOT-001 and tech
+  design §6.2 specified `\n`. Each side had followers — Rust implemented `\n\n`, Python and
+  TypeScript implemented `\n` — so the code divergence was downstream of a spec divergence. `\n`
+  wins: it was already the majority on both the doc side and the implementation side. For
+  `extra = {"mcp_a": "1", "mcp_b": "2"}` with one non-default flag the correct suffix is
+  `"\n\n[Annotations: readonly=true]\na: 1\nb: 2"`.
+  **Action required (Rust):** `to_description_suffix` (`src/adapters/annotations.rs`) must join the
+  extras with `\n` inside the annotations paragraph rather than emitting each as its own
+  `\n\n`-separated section, and the tests pinning the old shape move with it. Python and
+  TypeScript are already conformant. `annotation-mapper.md` also now requires **ordinal** (code
+  point) sorting of the extras keys rather than locale collation, which varies by host.
+
+### Fixed — spec chain vs. implementation
+
+- **Output redaction with an empty `output_schema` (security-relevant).** Tech design §6.16 stated
+  redaction returns "the original output unchanged if output_schema is None or `{}`", and SRS
+  FR-REDACT-001's boundary conditions agreed — directly contradicting FR-REDACT-002,
+  TC-REDACT-002, and the measured behaviour recorded in `conformance/fixtures/output_redaction.json`,
+  all of which require `_secret_*` prefixed keys to be masked regardless of schema markings. An
+  implementer following the tech design would have returned `_secret_api_key` in plaintext for every
+  module without an output schema — the common case, and a direct NFR-SEC-004 violation. Both
+  statements corrected, and the two distinct cases are now spelled out separately: an empty `{}`
+  schema is still passed to `redact_sensitive()` (prefix rule applies), whereas a tool with no
+  registered schema at all skips redaction entirely.
+- **`ExecutionRouter.handle_call` return type.** SRS §3.3, tech design §6.3 and test plan §5.3 all
+  specified `CallToolResult`; all three SDKs return the tuple `(content, is_error, trace_id)` and
+  the MCP SDK server layer materialises the `CallToolResult` a layer above. TC-EXEC-001 as written
+  could not pass against any SDK. The SRS glossary now names both levels ("call-result tuple",
+  "error response dict"), every signature-level assertion was corrected, and the test plan carries
+  an explicit unpacking note.
+- **`ErrorMapper.to_mcp_error` / `AnnotationMapper.to_mcp_annotations` return types.** Fourteen
+  FR-ERROR requirements and five FR-ANNOT requirements specified MCP SDK objects
+  (`CallToolResult`, `ToolAnnotations`); both return plain camelCase dicts. The SRS also carried no
+  `errorType` field at all in its error model. Corrected, including the canonical
+  `GENERAL_INTERNAL_ERROR` code and the fact that **the AI-guidance keys are camelCase on the
+  wire** (`retryable` / `aiGuidance` / `userFixable` / `suggestion`) even though the apcore-side
+  source attributes are snake_case.
+- **MCP tool names are not sanitized.** Tech design ADR-03 stated MCP tool names come from
+  `display.mcp.alias` "pre-sanitized by `DisplayResolver`" with `module_id` as a fallback
+  "auto-sanitized: dots → underscores". No `DisplayResolver` exists in any SDK, no sanitization is
+  applied, and the `module_id` is exposed verbatim — `image.resize` is the MCP tool name. ADR-03's
+  `.` → `-` normalization is **OpenAI-only** and remains correct; its scope is now stated.
+- **The display overlay was documented against a key no SDK reads.**
+  `features/mcp-server-factory.md`'s Display Precedence named
+  `descriptor.annotations.extra["display_overlay"]`. The real path is `descriptor.display["mcp"]`
+  with `descriptor.metadata["display"]["mcp"]` as a compatibility fallback, carrying `alias`,
+  `description` and `guidance`. Rewritten, including the `"\n\nGuidance: {text}"` append and the
+  precedence of an operator-typed `description` over `rich_description` rendering.
+- **`serve()` / `async_serve()` had three mutually exclusive signatures of record** — SRS §7.8
+  listed 13 parameters, SRS §8.1.1 listed 21, tech design §7.1 listed 30. The real surface is 37
+  (`serve`) and 32 (`async_serve`). SRS §8.1.1 is now the complete, authoritative signature;
+  tech design §7.1 matches it; SRS §7.8 is explicitly labelled a partial constraints table;
+  `features/mcp-server-factory.md` groups the same set by concern. Also corrected along the way:
+  `exempt_paths` is a **set**, not a list, and defaults to `{"/health", "/metrics"}` rather than
+  empty; the parameter is `middleware` (singular), never `middlewares`; and `metrics_collector`
+  accepts a bool.
+- **`AsyncTaskBridge.is_async(descriptor)`** (tech design §6.15) exists in no SDK and in no other
+  document — the method is `is_async_module`.
+- **`PreflightResult` is not a bridge return type.** Four documents specified
+  `ExecutionRouter.validate_tool(...) -> PreflightResult`. `PreflightResult` is an upstream apcore
+  type; all three bridges project it to a plain `{valid, checks, requires_approval}` dict and none
+  re-exports it. Also recorded: Python's `validate_tool` is synchronous while TypeScript's and
+  Rust's are async, and all three report `valid: true` for an executor with no `validate()` method.
+- **The standalone output redactor was never built.** Tech design §6.16 specified
+  `src/apcore_mcp/server/redactor.py` exposing `redact_tool_output(output, output_schema)`, and
+  five test-plan steps called it. Redaction is a private `ExecutionRouter` method
+  (`_maybe_redact` / `_maybeRedact` / `redact_output`) that resolves the schema from the router's
+  own map. Both documents now describe the shipped shape.
+- **Version floors were stale in both directions.** Tech design's `pyproject.toml` sample declared
+  `requires-python = ">=3.10"` (real: `>=3.11`, matching the SRS, the PRD and the README) and
+  `apcore>=0.17.1,<1.0`; SRS NFR-COMPAT-002 declared `apcore >= 0.19.0`. All three SDKs pin
+  **0.27.0** — `apcore>=0.27.0`, `apcore-js>=0.27.0`, `apcore = "0.27"` — alongside
+  `apcore-toolkit>=0.10.0` and `mcp-embedded-ui>=0.4.0`. Also recorded: apcore-toolkit is an
+  optional `[markdown]` extra in Python but a hard dependency in TypeScript and Rust, which is
+  intentional per-language behaviour and not drift.
+- **F-045 and F-046 were named differently in different documents.** The SRS traceability table
+  called them "Observability Auto-Wiring" and "Cross-SDK Cancel Dispatcher"; the PRD, the tech
+  design, and the SRS's own §10.3 body call them "Decorator Metadata Mapping" and "Custom
+  Middleware Injection". The traceability table was the outlier and now matches.
+- **The test plan's own coverage-gap note was wrong about four features.** F-037, F-039, F-040 and
+  F-041 were listed as pending while §5.11, §5.13, §5.14 and §5.15 fully define their test cases.
+  The note now lists only the six features that genuinely have no cases (F-033, F-034, F-035,
+  F-044, F-045, F-046).
+- **Feature specs that had fallen behind fixes already made in code:**
+  `schema-converter.md` still documented TypeScript's converter-level `strict` default as `false`
+  (it is `true` since the [SC-11] alignment); `execution-router.md` still documented Rust's
+  `redact_output` as defaulting to `false` (it is `true` in all three, and a `false` default would
+  have made Rust the one bridge leaking `x-sensitive` output); `error-mapper.md` still described
+  `userFixable` as "TypeScript only, hardcoded" (all three now read it off the error object).
+- **Broken cross-references.** Two links and two SRS table-of-contents anchors did not resolve;
+  `mkdocs build --strict` now passes clean.
+
+### Changed — status corrections
+
+- **Extension Bridge (F-042 / EB-2) is documented as unimplemented in all three SDKs.**
+  `features/extension-bridge.md` claimed adapter-hook injection was "functional in
+  Python+TypeScript", and `features/mcp-server-factory.md` documented the three hooks as accepted
+  `serve()` keyword arguments. Neither is true and neither ever was: Python's `serve()` takes 37
+  keyword parameters and `MCPServerFactory.__init__` takes exactly `strict` and `rich_description`,
+  with none of `extensions` / `schema_converter` / `annotation_mapper` / `error_mapper` in either;
+  TypeScript rejects the same options at compile time (`tsc` TS2353) and silently drops them for a
+  JavaScript caller. There is **no supported way to replace the built-in SchemaConverter,
+  AnnotationMapper or ErrorMapper** on any entry point. Consequently test plan §9f's TC-EXTMGR-002
+  through TC-EXTMGR-006 are unwritable and are marked DEFERRED; only TC-EXTMGR-001, the
+  default-adapter case, remains active. EB-1 (`ExtensionManager.apply()`) stays withdrawn.
+- **The Registry Listener's Client Notification Bridge is documented as unimplemented.** No SDK
+  contains a call site that sends `notifications/tools/list_changed` — emission, the 100 ms
+  debounce window, per-session ACL filtering and HTTP fan-out are all design targets. All three
+  nonetheless advertise `tools: { listChanged: true }` in the initialize response, so a client that
+  trusts the capability waits for a refresh signal that never arrives. The listener's internal half
+  does work: the register/unregister subscription rebuilds the active tool collection, so
+  `tools/list` returns the correct set when the client asks again. Treat dynamic registration as
+  poll-only until the bridge lands.
+- **`async.*` were never Config Bus keys.** `features/async-task-bridge.md` presented five
+  `async.*` settings as configuration. They are `serve()` parameters — `async_max_concurrent`,
+  `async_max_tasks`, `async_tasks` — and two of the five documented keys exist nowhere:
+  `async.cleanup_interval_s` is read by no SDK, and the async-hint paths are hardcoded
+  (`metadata.async` truthy, or `annotations.extra["mcp_async"] == "true"`) rather than configurable
+  via `async.hint_keys`.
+- **Markdown helper reachability.** `features/markdown.md` now records what a package consumer can
+  actually reach: TypeScript's `isMarkdownAvailable` / `primeMarkdownToolkit` /
+  `renderModuleMarkdownSync` are exported from `src/markdown.ts` but not re-exported by `index.ts`,
+  and `package.json` declares `exports` as `"."` only, so none of them are importable from the
+  published package; Python has no `prime_markdown_toolkit` symbol at all; and Rust's
+  `is_available()` returns a constant `true` because the toolkit is a compile-time dependency
+  there, so the spec's "toolkit unavailable" row cannot arise. Rust's
+  `render_module_markdown(descriptor, display)` also takes a second argument the spec omitted.
+
+### Added
+
+- **Approval Phase B has user-facing documentation for the first time.** The feature shipped in
+  0.16.0 and 0.17.0 made it reachable from `serve()`, but `approval_store` / `approval_notify` /
+  `InMemoryApprovalStore` / `__apcore_approval_check` appeared in **zero** user-facing pages across
+  the whole ecosystem — a reader going README → getting-started → configuration never learned it
+  existed. `docs/configuration.md` now splits Approval into Phase A (inline elicitation) and
+  Phase B (storage-backed), with all three language tabs for each, the four-step agent polling flow,
+  and an explicit warning that `InMemoryApprovalStore` is process-local and non-durable. The notify
+  callback is documented as **awaited** in Python and returning `Promise<void>` in TypeScript, which
+  the previous examples would have got wrong.
+- **Config Bus reference** (`docs/configuration.md`) — the `mcp` namespace was documented nowhere.
+  All twelve keys, their defaults, the `APCORE_MCP_*` environment mapping, and the caller-wins
+  precedence rule. `output_format` is flagged as **Rust-only**: Python and TypeScript do not read it
+  from the Config Bus, so the same `apcore.yaml` produces CSV output from Rust and JSON from the
+  other two.
+- **`conformance/README.md`** — the five fixtures are the cross-language behavioural contract but
+  had no index, no format documentation and no entry point for a new SDK author. Now documents what
+  each fixture pins, the file format, the meaning of `known_gaps`, the shared
+  `APCORE_CONFORMANCE_FIXTURES` override, and each SDK's loader — including that Rust's assertions
+  are inline `#[cfg(test)]` tests inside `src/`, so a coverage audit that only inspects `tests/`
+  will wrongly conclude Rust skips a fixture. Linked from `examples-spec.md`.
+- **Rust and TypeScript example layouts in `docs/examples-spec.md`.** Cargo requires each example
+  to be its own target, so the canonical tree cannot be reproduced literally in Rust; the equivalent
+  layout is now specified as conformant rather than left looking like a deviation. The TypeScript
+  note records that `binding_demo/` has no `extensions/` directory because it uses the `module()`
+  factory — `binding.yaml` files are Python-only.
+- **Cross-language `strict` divergence is documented at every place it bites.** Written exactly as
+  the Quick Start shows, the three `to_openai_tools` tabs produce different OpenAI schemas from the
+  same registry: Python defaults `strict=False` and emits permissive schemas, TypeScript defaults to
+  `true`, and the documented Rust call passes `true`. Now called out in the README, in
+  `docs/configuration.md`, and in SRS §7.9, with the advice to pass `strict` explicitly in portable
+  code.
+- **The Rust directory-discovery limitation is now visible where users hit it.** CHANGELOG 0.17.0
+  recorded that `BackendSource::ExtensionsDir` builds an empty registry, but the README Quick Start
+  (Rust tab, CLI tab, and the Auto-discovery feature bullet), `docs/index.md`, and
+  `docs/getting-started.md` §2 and §4 all still presented the zero-code path as working for Rust —
+  a first run yields a server with no user tools. Every one of those now carries the caveat, and the
+  README's Rust example was rewritten to the `Registry` → `Executor` → `.backend(...)` pattern that
+  actually works.
+- `docs/examples-spec.md` — the normative cross-language examples standard, carrying the compliance
+  checklist every new `apcore-mcp-{lang}` implementation must satisfy — was **not in the MkDocs
+  nav** and therefore not published to the docs site, and not included in the generated
+  `llms-full.txt`. Added to the Specifications section.
+- `llms.txt` — Features listed 9 of the 16 feature specs; the missing seven (Error Mapper, Extension
+  Bridge, Registry Listener, Approval Handler, Approval Handler Phase B, Async Task Bridge,
+  Markdown) are added, along with the Test Plan and Examples Standard under Specifications. Two
+  claims that apcore-mcp "can aggregate upstream MCP servers as a gateway" were removed: no such
+  feature exists in any spec, PRD feature, or SDK source, and `llms.txt` exists specifically to feed
+  machine consumers.
+- `docs/index.md` now carries a banner recording that the deploy workflow replaces it with the
+  repo-root README, so the published Home page is the README and edits to `index.md` never reach the
+  site.
+
+### Known limitations (Rust)
+
+Both carried forward from 0.17.0 and re-verified against 0.17.2:
+
+- `strategy` overrides apply on the trace execution path only; the non-trace `call()` path still
+  runs the executor's own strategy.
+- `BackendSource::ExtensionsDir` cannot honor runtime directory discovery through apcore's public
+  API and builds an empty registry with a warning; `BackendSource::Registry` is fully supported.
+  This limitation is now surfaced in the README, `docs/index.md` and `docs/getting-started.md`
+  rather than only here.
+
+
 ## [0.17.0] - 2026-06-23
 
 Cross-SDK maintenance release resolving an extended audit of the serve/embed

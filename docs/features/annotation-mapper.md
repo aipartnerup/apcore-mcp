@@ -103,9 +103,20 @@ All four fields are optional: when absent or `None` on the descriptor, the mappe
 - **mcp_extras:** For each key in `annotations.extra` starting with `mcp_` whose value is a string:
   - Strip the `mcp_` prefix to get the stripped key
   - Format as `{stripped_key}: {value}` (colon-space separator)
-  - Process in alphabetical order (sorted by original key)
-  - Append each as a separate `\n\n`-delimited section AFTER the `[Annotations: ...]` block
+  - Process in alphabetical order, sorted **ordinally by code point** on the original key — not by
+    locale collation, which would order differently per host
+  - Append each as `\n{stripped_key}: {value}` directly after the `[Annotations: ...]` block —
+    a **single** newline between entries, not a blank line
+  - Non-string values are skipped entirely; they are never stringified into the description
   - An empty extras dict produces no additional output
+
+> **Separator — settled 2026-08-18.** This spec previously said the entries were `\n\n`-delimited
+> while SRS FR-EXTRAANNOT-001 and tech design §6.2 said `\n`. `\n` is now normative: it is what
+> Python (`annotations.py:76`) and TypeScript (`annotations.ts:147`) emit, and what two of the three
+> doc layers already specified. **Rust still emits `\n\n`** (`annotations.rs:144`) because it
+> followed this spec's earlier wording — that is now a known divergence to fix in the Rust bridge,
+> not a spec question. Concretely, for `extra = {"mcp_a": "1", "mcp_b": "2"}` with one non-default
+> flag the correct suffix is `"\n\n[Annotations: readonly=true]\na: 1\nb: 2"`.
 - On failure: returns `""` (never raises)
 
 ### Properties

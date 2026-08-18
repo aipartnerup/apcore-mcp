@@ -13,6 +13,12 @@ description: "Cross-language standard mandating the 5 runnable demo modules (tex
 
 ---
 
+> **Companion contract.** This document standardises the *examples* every apcore-mcp implementation
+> ships. The other half of the compliance surface is the shared behavioural fixtures in
+> [`conformance/fixtures/`](https://github.com/aiperceivable/apcore-mcp/tree/main/conformance) —
+> five JSON files that all three SDKs load and assert against. See that directory's `README.md` for
+> what each fixture pins.
+
 ## 1. Purpose
 
 Every `apcore-mcp-{lang}` implementation MUST ship an `examples/` directory with runnable demo modules. These examples serve as:
@@ -151,17 +157,45 @@ examples/
     └── extensions/            # (Python only: binding.yaml files)
 ```
 
+### 4.1 Rust layout
+
+Cargo requires each example to be its own target, so the tree above cannot be reproduced literally in
+Rust. The **equivalent** layout, which satisfies this standard:
+
+```
+examples/
+├── run/
+│   ├── main.rs                # Unified launcher (= examples/run.{ext})
+│   └── modules.rs             # All 5 module definitions
+├── extensions/
+│   ├── main.rs                # Class-based-only launcher
+│   └── modules.rs             # The 3 class-based modules
+└── binding_demo/
+    ├── main.rs                # Zero-code-only launcher (= binding_demo/run.{ext})
+    └── myapp.rs               # Plain business logic (no apcore imports)
+```
+
+Rust also has no directory auto-discovery (see the CHANGELOG's *Known limitations (Rust)*), so every
+Rust launcher builds a `Registry` in code and passes an `Arc<Executor>` to `.backend(...)` instead of
+pointing at `extensions/`. That is the expected shape for Rust, not a deviation from §5.
+
+### 4.2 TypeScript note
+
+TypeScript has `examples/binding_demo/` but no `binding_demo/extensions/` directory: the zero-code
+demo uses the `module()` factory per §2.2 rather than `binding.yaml` files, which are Python-only.
+
 ## 5. Launcher Requirements
 
-### 5.1 Unified Launcher (`examples/run.{ext}`)
+### 5.1 Unified Launcher (`examples/run.{ext}`, or `examples/run/main.rs` in Rust)
 
 Must:
-1. Discover all 3 class-based modules via `Registry.discover()`
+1. Discover all 3 class-based modules via `Registry.discover()` — or, in Rust, register them
+   explicitly (there is no `discover()` equivalent; see §4.1)
 2. Load/wrap all 2 zero-code modules into the same registry
 3. Print module counts: class-based, zero-code, total
 4. Launch MCP server with `transport=streamable-http`, `host=127.0.0.1`, `port=8000`, `explorer=true`, `allowExecute=true`
 
-### 5.2 Zero-Code Launcher (`examples/binding_demo/run.{ext}`)
+### 5.2 Zero-Code Launcher (`examples/binding_demo/run.{ext}`, or `examples/binding_demo/main.rs` in Rust)
 
 Must:
 1. Load only the 2 zero-code modules
@@ -263,4 +297,4 @@ For each new `apcore-mcp-{lang}` implementation:
 
 ## Appendix: Explorer UI Reference
 
-![Explorer UI](../apcore-mcp-explorer-ui.png)
+![Explorer UI](https://raw.githubusercontent.com/aiperceivable/apcore-mcp/main/apcore-mcp-explorer-ui.png)

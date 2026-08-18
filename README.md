@@ -97,13 +97,27 @@
 
     ```rust
     use apcore_mcp::APCoreMCP;
+    use apcore::{Config, Executor};
+    use std::sync::Arc;
 
-    // Launch MCP server over stdio
+    // Rust cannot discover modules from a directory — see the note below.
+    // Register your modules, then hand the builder an Executor.
+    let registry = build_my_registry();
+    let executor = Arc::new(Executor::new(registry, Config::default()));
+
     let mcp = APCoreMCP::builder()
-        .backend("./extensions")
+        .backend(executor)
         .build()?;
     mcp.serve()?;
     ```
+
+    !!! warning "Rust does not support directory auto-discovery yet"
+        `.backend("./extensions")` and the CLI's `--extensions-dir` compile and run, but they build
+        an **empty registry** with a warning — apcore's public Rust API has no runtime directory
+        discovery. The server starts and serves zero user modules (only the `__apcore_*` meta-tools).
+        Use `BackendSource::Registry` — a `Registry`/`Executor` you construct in code — which is
+        fully supported. Tracked in the CHANGELOG under *Known limitations (Rust)*; the Python and
+        TypeScript paths above are unaffected.
 
 === "💻 CLI"
 
@@ -114,6 +128,9 @@
     # Streamable HTTP with Explorer UI
     apcore-mcp --extensions-dir ./extensions --transport streamable-http --port 8000 --explorer
     ```
+
+    *The Python and TypeScript CLIs discover modules from the directory. The **Rust** CLI does not —
+    `--extensions-dir` builds an empty registry there; see the Rust tab above.*
 
 ### 2. Export as OpenAI Tools
 
@@ -141,17 +158,27 @@
     use apcore_mcp::APCoreMCP;
 
     let mcp = APCoreMCP::builder()
-        .backend("./extensions")
+        .backend(executor)
         .build()?;
-    let tools = mcp.to_openai_tools(false, true)?;
+    //                          embed_annotations, strict
+    let tools = mcp.to_openai_tools(false,             true)?;
     ```
+
+!!! note "`strict` does not default the same way in all three"
+    Written exactly as above, the three tabs produce **different** OpenAI schemas from the same
+    registry: Python's `to_openai_tools()` defaults `strict=False` and emits permissive schemas,
+    while TypeScript's `toOpenaiTools()` defaults to `true` and the Rust call passes `true`
+    positionally — both emit strict ones (`additionalProperties: false`, every property forced into
+    `required`, nullable types wrapped, `"strict": true` on the function). OpenAI's function-calling
+    treats the two shapes differently. **Pass `strict` explicitly** in anything portable:
+    `mcp.to_openai_tools(strict=True)` / `mcp.toOpenaiTools({ strict: true })`.
 
 ---
 
 ## Key Features
 
 - **🚀 Zero Intrusion**: Your apcore project needs no code changes, no imports, and no extra dependencies.
-- **🔍 Auto-discovery**: Point to an extensions directory, and everything is automatically discovered and exposed.
+- **🔍 Auto-discovery**: Point to an extensions directory, and everything is automatically discovered and exposed *(Python and TypeScript; the Rust bridge needs a `Registry` you build in code — see the Quick Start note)*.
 - **🌐 Triple Transport**: Supports `stdio` (for local LLMs), `Streamable HTTP`, and `SSE`.
 - **🛠️ Tool Explorer**: Browser-based UI to browse schemas and test tools interactively (like Swagger UI for MCP).
 - **🛡️ Security**: Built-in JWT authentication, PEM key support, and runtime approval elicitation.
@@ -166,7 +193,7 @@ apcore-mcp acts as a protocol-specific adapter on top of the apcore Registry, ma
 
 | apcore Concept | MCP Mapping | OpenAI Mapping |
 |----------------|-------------|----------------|
-| `module_id` | Tool name | `name` (dash-normalized) |
+| `module_id` | Tool name, **verbatim** — dots and all (`image.resize`); overridable via `display.mcp.alias` | `name` (dash-normalized: `image-resize`) |
 | `description` | Tool description | `description` |
 | `input_schema` | `inputSchema` | `parameters` |
 | `annotations` | `ToolAnnotations` hints | Description suffixes (optional) |
