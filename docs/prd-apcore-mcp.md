@@ -1032,7 +1032,7 @@ The wire format uses camelCase (`retryable`, `aiGuidance`, `userFixable`, `sugge
 3. Keys matching `_secret_*` prefix are redacted regardless of schema annotation.
 4. Nested sensitive fields are redacted (recursive schema traversal).
 5. `serve(registry, redact_output=False)` disables output redaction.
-6. If `output_schema` is empty `{}`, no redaction is performed (no schema to match against).
+6. If `output_schema` is empty `{}`, no **schema-driven** redaction is performed. Key-name redaction still applies where the upstream apcore library implements it — criterion 3's `_secret_*` rule is unconditional, and apcore (Python) additionally masks secret-bearing names such as `token` and `password` with no schema at all. The three upstream libraries currently differ here; see `conformance/fixtures/output_redaction.json` → `known_gaps#upstream_key_name_heuristic` for the measured behaviour of each. This criterion previously read "no redaction is performed", which no implementation satisfies.
 7. Redaction does not modify the original output dict (operates on a copy).
 
 **Priority:** P1
@@ -1095,6 +1095,22 @@ The wire format uses camelCase (`retryable`, `aiGuidance`, `userFixable`, `sugge
 4. Values must be strings; non-string values are silently ignored.
 5. Extra metadata appears in Explorer tool detail view.
 6. Empty `extra` dict or no `mcp_` keys: no change to tool definition.
+
+**Implementation status (2026-08-18): criteria 1 and 5 are NOT met, consistently across all
+three bridges.** The `mcp_` extraction itself exists and is exercised — criteria 2, 3, 4 and 6
+hold — but the rendered suffix reaches only the **OpenAI** tool description: all three bridges
+call `AnnotationMapper.to_description_suffix()` from the OpenAI converter and never from
+`MCPServerFactory.build_tool()`, so neither the MCP tool description nor the Explorer detail
+view carries the metadata. This is a feature gap, not cross-language divergence, and it is
+pinned as such in `conformance/fixtures/tool_mapping.json` →
+`known_gaps#f041_mcp_description_passthrough`; the OpenAI half is covered by
+`openai_tool_mapping.json#mcp_prefix_reaches_the_description`.
+
+Closing it is more than wiring up the existing call: `to_description_suffix()` also renders
+destructive warnings and the `[Annotations: ...]` block, so invoking it from `build_tool()`
+would rewrite the description of *every* tool, not just those carrying `mcp_` keys. It needs a
+narrower renderer, and the three bridges must first agree on the separator — Rust emits each
+extra as its own `\n\n`-separated paragraph while Python joins them with `\n`.
 
 **Priority:** P2
 
