@@ -41,21 +41,21 @@
     ```bash
     pip install apcore-mcp
     ```
-    *Requires Python 3.11+ and apcore 0.21.0+ (optional `[markdown]` extra: apcore-toolkit 0.6.0+).*
+    *Requires Python 3.11+. The optional `[markdown]` extra adds Markdown tool descriptions.*
 
 === "📘 TypeScript"
 
     ```bash
     npm install apcore-mcp
     ```
-    *Requires Node.js 18+ and apcore-js >=0.21.1 (optional peer: apcore-toolkit >=0.6.1).*
+    *Requires Node.js 18+. apcore-toolkit is an optional peer for Markdown tool descriptions.*
 
 === "🦀 Rust"
 
     ```bash
     cargo add apcore-mcp
     ```
-    *Requires Rust 1.75+ and apcore = "0.21.0", apcore-toolkit = "0.6.0".*
+    *Requires Rust 1.75+.*
 
 ---
 
@@ -192,7 +192,7 @@ The project is architected as a set of modular features, each with its own speci
 - [Approval Handler](docs/features/approval-handler.md) — Human-in-the-loop elicitation
 - [Async Task Bridge](docs/features/async-task-bridge.md) — Routes async-hinted modules to apcore's AsyncTaskManager
 - [Explorer UI](docs/features/explorer-ui.md) — Interactive dev dashboard
-- [Markdown](docs/features/markdown.md) — Rich Markdown tool descriptions via apcore-toolkit (v0.15+)
+- [Markdown](docs/features/markdown.md) — Rich Markdown tool descriptions via apcore-toolkit
 
 ---
 
@@ -210,9 +210,9 @@ The project is architected as a set of modular features, each with its own speci
 
 | Language | Repository | Package | Status |
 |----------|-----------|---------|--------|
-| Python | [apcore-mcp-python](https://github.com/aiperceivable/apcore-mcp-python) | `pip install apcore-mcp` | ✅ v0.15.0 |
-| TypeScript | [apcore-mcp-typescript](https://github.com/aiperceivable/apcore-mcp-typescript) | `npm install apcore-mcp` | ✅ v0.15.0 |
-| Rust | [apcore-mcp-rust](https://github.com/aiperceivable/apcore-mcp-rust) | `cargo add apcore-mcp` | ✅ v0.15.0 |
+| Python | [apcore-mcp-python](https://github.com/aiperceivable/apcore-mcp-python) | `pip install apcore-mcp` | ✅ Available |
+| TypeScript | [apcore-mcp-typescript](https://github.com/aiperceivable/apcore-mcp-typescript) | `npm install apcore-mcp` | ✅ Available |
+| Rust | [apcore-mcp-rust](https://github.com/aiperceivable/apcore-mcp-rust) | `cargo add apcore-mcp` | ✅ Available |
 | Go | apcore-mcp-go | — | Planned |
 
 ## License
