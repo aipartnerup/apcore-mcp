@@ -10,6 +10,7 @@
 [![Rust Version](https://img.shields.io/badge/Rust-1.75%2B-blue)](https://github.com/aiperceivable/apcore-mcp-rust)
 
 > **Build once, invoke by Code or AI.**
+> Same modules, same pipeline — an AI caller gets no shortcut.
 
 **apcore-mcp** turns any [apcore](https://github.com/aiperceivable/apcore)-based project into an [MCP Server](https://modelcontextprotocol.io/) and [OpenAI tool](https://platform.openai.com/docs/guides/function-calling) provider — with **zero code changes** to your existing project.
 
