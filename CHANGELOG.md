@@ -6,6 +6,76 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.19.0] - 2026-09-01
+
+Spec-contract release, driven by apcore 0.28.0 and three open issues on `system.*` management
+modules (aiperceivable/apcore-mcp#14, #15, #16).
+
+### Added — contract
+
+- **System Management Extension (`com.aiperceivable/management`), Phase A only** — new spec document
+  [`docs/features/system-management-extension.md`](docs/features/system-management-extension.md).
+  Defines an unofficial ([SEP-2133](https://modelcontextprotocol.io/seps/2133-extensions)) MCP
+  extension a conforming adapter advertises in `capabilities.extensions` during `initialize`, if and
+  only if at least one `system.*` module is reachable. The extension is pure discovery metadata: a
+  client that does not declare it **MUST** still reach every management resource and tool, subject
+  only to Activation/ACL/Approval — PROTOCOL_SPEC §6.6.3 already forbids adapters from inventing a
+  permission switch beyond those three layers, and a capability-gated access difference would be
+  exactly that. Resolves aiperceivable/apcore-mcp#16 Phase A (Phases B and C — Working Group
+  discussion and formal SEP submission — are out of scope here and tracked by their own follow-ups).
+
+### Changed — contract
+
+- **`system.health.*` / `system.usage.*` / `system.manifest.*` now project as MCP resources, not
+  tools; `system.control.*` is unchanged.** `docs/features/mcp-server-factory.md`'s "Bijective
+  Mapping" constraint previously had no exception and described all nine `system.*` modules as tools.
+  Classification is by `module_id` prefix only, per PROTOCOL_SPEC §6.6.2 — an adapter **SHOULD NOT**
+  introduce its own classification mechanism. The three summary/full modules are static resources
+  (`apcore://system.health.summary`, `apcore://system.usage.summary{?period}`,
+  `apcore://system.manifest.full`); the three per-module modules are resource templates
+  (`apcore://system.{health,manifest}.module/{module_id}`,
+  `apcore://system.usage.module/{module_id}{?period}`). A `resources/read` on any of these **MUST**
+  dispatch through the same Activation → ACL → Approval → Executor pipeline a `tools/call` would use —
+  never a second, resource-only path that bypasses ACL or the audit trail. Resolves
+  aiperceivable/apcore-mcp#15(a); tracked per-language in apcore-mcp-typescript#9,
+  apcore-mcp-python#8, apcore-mcp-rust#6.
+- **New required startup guard: the unprotected-control-surface warning.** `docs/features/mcp-server-factory.md`
+  now requires `serve()` / `async_serve()` to call `Executor.governanceState()` /
+  `governance_state()` once the executor is fully assembled and, when
+  `.unprotectedControlSurface` / `.unprotected_control_surface` is `true`, emit a prominent
+  (not fatal) startup warning naming the specific gaps and the configuration that closes each one.
+  This accessor was itself blocked on aiperceivable/apcore#97 until apcore 0.28.0 shipped it; the
+  warning was the reason #15(b) tracked that dependency instead of re-deriving the predicate from
+  executor internals.
+
+### Fixed — spec chain vs. implementation
+
+- **ACL rule template documented a `sys.*` namespace that was never registered.** The canonical IDs
+  are `system.health.*` / `system.usage.*` / `system.manifest.*` / `system.control.*` — there is no
+  `sys.` prefix. A copied **deny** rule using the wrong namespace never matches, so it silently fails
+  to block anything, which is the dangerous direction. Fixes aiperceivable/apcore-mcp#14; the
+  corrected three-rule template (read-only allow, control allow, catch-all deny) and the mechanism
+  notes about `@external` normalization and JWT-derived `identity_types`/`roles` ship in all three
+  adapters' `acl_builder` doc comments.
+
+### Added — conformance
+
+- **New shared fixture `conformance/fixtures/system_surface.json`.** Pins the nine canonical
+  `system.*` modules' exact MCP primitive (tool / resource / resource template) and name/URI,
+  operationalizing #15's "byte-identical `tools/list`, `resources/list`, `resources/templates/list`
+  across TypeScript, Python and Rust" acceptance criterion as a regression fixture each adapter's
+  own test suite drives, rather than a one-time manual comparison. Finding this fixture useful
+  immediately: driving it against the three adapters caught `system.usage.module`'s resource
+  template missing the RFC 6570 `{?period}` query-expansion suffix in the Python and Rust
+  implementations (`apcore-mcp-typescript` had it right) — exactly the class of divergence this
+  fixture exists to catch. See each adapter's own CHANGELOG for the fix.
+
+### No SDK behaviour asserted by this document alone
+
+As with 0.18.0, this document records the contract; conformance is the per-language implementation
+tracked in the sub-issues above. See each adapter's own CHANGELOG for what actually shipped at its
+current version.
+
 ## [0.18.0] - 2026-08-19
 
 Spec-correctness release. A full cross-language sync round audited every feature spec and the

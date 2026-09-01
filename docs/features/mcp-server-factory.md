@@ -108,7 +108,66 @@ The output of all three SDKs is functionally equivalent strict JSON Schema; the 
 
 - **Name Constraint**: The server name must be non-empty and must not exceed 255 characters.
 - **Protocol Limits**: Tool names are derived from `module_id` and must comply with the protocol's naming restrictions.
-- **Bijective Mapping**: Each module in the registry (post-filtering) results in exactly one tool in the MCP interface.
+- **Bijective Mapping, with one classification exception**: each module in the registry (post-filtering)
+  results in exactly one MCP primitive — but that primitive is a **tool** for every module *except* the
+  six read-only `system.health.*` / `system.usage.*` / `system.manifest.*` modules, which project as a
+  **resource** or **resource template** instead. See
+  [System Module Projection](#system-module-projection-resources-vs-tools) below. Prior to v0.19.0 this
+  constraint had no exception and all nine `system.*` modules (including the three write
+  `system.control.*` ones) were projected as tools — corrected per aiperceivable/apcore-mcp#15.
+
+## System Module Projection: resources vs. tools
+
+`system.*` modules are classified into MCP primitives by **`module_id` prefix only**
+(PROTOCOL_SPEC §6.6.2). An adapter **SHOULD NOT** introduce its own classification mechanism —
+reserved tags, environment variables, or an adapter-level switch — because the classification is a
+protocol-level fact about the module (read-only observability vs. a side-effecting write), not a
+deployment choice.
+
+| Module | Primitive | URI / name |
+|---|---|---|
+| `system.health.summary` | resource | `apcore://system.health.summary` |
+| `system.health.module` | resource template | `apcore://system.health.module/{module_id}` |
+| `system.usage.summary` | resource | `apcore://system.usage.summary{?period}` |
+| `system.usage.module` | resource template | `apcore://system.usage.module/{module_id}{?period}` |
+| `system.manifest.full` | resource | `apcore://system.manifest.full` |
+| `system.manifest.module` | resource template | `apcore://system.manifest.module/{module_id}` |
+| `system.control.update_config` | tool | `system.control.update_config` |
+| `system.control.reload_module` | tool | `system.control.reload_module` |
+| `system.control.toggle_feature` | tool | `system.control.toggle_feature` |
+
+The three `system.control.*` modules have side effects — that is what a tool is — and stay tools with
+the approval bridge wired on the tool-call path exactly as before. The six read-only modules are
+excluded from `build_tools()`'s output and are instead served by the resource-handler registration step
+(below), whichever `module_id` prefix filter or resource-handler-only variant of that step the SDK
+exposes.
+
+**A `resources/read` on any `apcore://system.*` URI MUST be dispatched through the same
+Activation → ACL → Approval → Executor pipeline as a `tools/call`** on the corresponding module — never
+through a second, resource-only path that bypasses ACL or the audit trail. Concretely: the parsed
+module ID and arguments (a `module_id` path segment for the three `*.module` templates, an optional
+`period` query parameter for the two usage variants) are routed through the same
+`ExecutionRouter.handleCall` / `handle_call` dispatcher `register_handlers`/`registerHandlers` already
+uses for tool calls.
+
+This classification is also the reachability signal the
+[System Management Extension](./system-management-extension.md) (`com.aiperceivable/management`,
+aiperceivable/apcore-mcp#16 Phase A) advertises in `capabilities.extensions` — see that document for
+the negotiation shape. Declaring or omitting that extension has no effect on whether any of the nine
+modules above are reachable; see its Design Constraint section.
+
+### Unprotected control surface warning
+
+At `serve()` / `async_serve()` startup, once the `Executor` is fully assembled (ACL, approval handler
+and policy all wired), the adapter **MUST** call `Executor.governanceState()` /
+`Executor::governance_state()` and, when `.unprotectedControlSurface` /
+`.unprotected_control_surface` is `true`, emit a prominent startup warning naming which of the
+underlying `GovernanceState` observations are unmet (no ACL configured, ACL configured but its
+built-in gate not wired into the running strategy, no approval handler and no strict
+`ExecutionPolicy`, or not every `system.control.*` module declaring `requiresApproval`) and the
+specific configuration that closes each gap. This is a warning only — it MUST NOT prevent the server
+from starting. See aiperceivable/apcore-mcp#15(b); the underlying accessor was itself blocked on
+aiperceivable/apcore#97 until apcore 0.28.0.
 
 ## Error Handling
 
@@ -189,6 +248,7 @@ The three Contract blocks below define each step. For HTTP transport, `build_ini
 ### Inputs
 - name: str, required, validates[non-empty, max 255 chars], reject_with=ValueError
 - version: str, optional, default="0.1.0"
+- management_surfaces: `{health, usage, manifest, control}` of bool, optional, default=None — **since v0.19.0**. When any field is `True`, `capabilities.extensions["com.aiperceivable/management"]` is added with `surfaces` set to the true fields and `protocolVersion` set to the PROTOCOL_SPEC version this adapter's `system.*` projection targets (see [System Management Extension](./system-management-extension.md)). When omitted or all-`False`, `capabilities.extensions` is absent entirely — never present with an empty `surfaces` array. Passing `None`/omitting it is fully backward compatible with pre-v0.19.0 callers.
 
 ### Errors
 - ValueError — when name is empty or exceeds 255 chars
@@ -221,6 +281,7 @@ The three Contract blocks below define each step. For HTTP transport, `build_ini
 - On success: list[Tool] — MCP Tool objects ready to register via `register_handlers`
 - On empty registry: empty list (warning logged)
 - Strict schema sourcing: tries `registry.export_schema(module_id, strict=True)` first; falls back to local SchemaConverter on miss/exception; Rust always uses local SchemaConverter (apcore Rust Registry lacks strict parameter)
+- **Since v0.19.0**: excludes the six read-only `system.health.*` / `system.usage.*` / `system.manifest.*` module IDs — these are projected as resources/resource-templates instead (see [System Module Projection](#system-module-projection-resources-vs-tools)). `system.control.*` modules are unaffected and still produce a Tool.
 
 ### Properties
 - async: false

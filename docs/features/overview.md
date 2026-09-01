@@ -26,6 +26,7 @@ description: "Auto-generated index of all apcore-mcp feature specs with dependen
 | [Async Task Bridge](./async-task-bridge.md) | Routes async-hinted modules to apcore's AsyncTaskManager and exposes task meta-tools. | execution-router, error-mapper | released-v0.14.0 |
 | [Explorer UI](./explorer-ui.md) | Web dashboard for inspecting and testing tools. | mcp-server-factory, execution-router | released-v0.14.0 |
 | [Markdown](./markdown.md) | Renders `Tool.description` and OpenAI `function.description` as canonical apcore-toolkit Markdown for richer LLM tool-selection signal (`rich_description` / `richDescription` / `with_rich_description`). | apcore-toolkit 0.6+ (optional) | released-v0.15.0 |
+| [System Management Extension](./system-management-extension.md) | Unofficial MCP extension (`com.aiperceivable/management`) advertising the `system.*` management surface's shape in `initialize`; Phase A only. | mcp-server-factory | released-v0.19.0 (Phase A) |
 
 ## Execution Order
 

@@ -1,0 +1,47 @@
+{
+  "description": "The nine canonical system.* modules -> exact MCP primitive, name/URI. Pins aiperceivable/apcore-mcp#15's classification table (system.health.*/system.usage.*/system.manifest.* are resources or resource templates; system.control.* stays a tool) and operationalizes the issue's 'byte-identical tools/list, resources/list, resources/templates/list across TypeScript, Python and Rust' acceptance criterion: given a registry produced by the SAME real registerSysModules()/register_sys_modules() call (sys_modules.enabled=true, sys_modules.events.enabled=true), each adapter's own tool/resource projection MUST produce exactly the entries below -- not merely an equivalent shape. A single-language fix (e.g. only one adapter emitting the RFC 6570 '{?period}' query-expansion on a template) is exactly the drift this fixture exists to catch.",
+  "spec": "PROTOCOL_SPEC.md#6.6.2 (classification by module_id prefix only), aiperceivable/apcore-mcp#15 (URI convention table), aiperceivable/apcore-mcp#16 Phase A (surfaces grouping)",
+  "setup": {
+    "description": "Build the registry that produces all nine module ids: sys_modules.enabled=true AND sys_modules.events.enabled=true. Without the events flag only the six read-only modules register and 'system.control.*' matches nothing -- see aiperceivable/apcore-mcp#15's registration-ladder table (0 / 6 / 9 modules).",
+    "config": {
+      "sys_modules": {
+        "enabled": true,
+        "events": { "enabled": true }
+      }
+    }
+  },
+  "tools": [
+    { "module_id": "system.control.update_config", "name": "system.control.update_config" },
+    { "module_id": "system.control.reload_module", "name": "system.control.reload_module" },
+    { "module_id": "system.control.toggle_feature", "name": "system.control.toggle_feature" }
+  ],
+  "not_tools": [
+    "system.health.summary",
+    "system.health.module",
+    "system.usage.summary",
+    "system.usage.module",
+    "system.manifest.full",
+    "system.manifest.module"
+  ],
+  "resources": [
+    { "module_id": "system.health.summary", "uri": "apcore://system.health.summary" },
+    { "module_id": "system.usage.summary", "uri": "apcore://system.usage.summary" },
+    { "module_id": "system.manifest.full", "uri": "apcore://system.manifest.full" }
+  ],
+  "resource_templates": [
+    { "module_id": "system.health.module", "uri_template": "apcore://system.health.module/{module_id}" },
+    {
+      "module_id": "system.usage.module",
+      "uri_template": "apcore://system.usage.module/{module_id}{?period}",
+      "note": "The only one of the nine modules whose declared template carries the RFC 6570 form-style query expansion '{?period}' -- system.usage.summary's optional ?period= is accepted at read time but is NOT part of its (non-template) resource's declared uri, since a concrete Resource.uri cannot carry template syntax."
+    },
+    { "module_id": "system.manifest.module", "uri_template": "apcore://system.manifest.module/{module_id}" }
+  ],
+  "extension": {
+    "identifier": "com.aiperceivable/management",
+    "surface_order": ["health", "usage", "manifest", "control"],
+    "protocol_version": "1.30.0",
+    "description": "With every system.* module registered (this fixture's setup), all four surfaces are present -- so the extension MUST be advertised with surfaces == surface_order verbatim."
+  },
+  "known_gaps": []
+}

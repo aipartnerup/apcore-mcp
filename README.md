@@ -220,6 +220,7 @@ The project is architected as a set of modular features, each with its own speci
 - [Async Task Bridge](docs/features/async-task-bridge.md) — Routes async-hinted modules to apcore's AsyncTaskManager
 - [Explorer UI](docs/features/explorer-ui.md) — Interactive dev dashboard
 - [Markdown](docs/features/markdown.md) — Rich Markdown tool descriptions via apcore-toolkit
+- [System Management Extension](docs/features/system-management-extension.md) — `com.aiperceivable/management` MCP extension (Phase A)
 
 ---
 
