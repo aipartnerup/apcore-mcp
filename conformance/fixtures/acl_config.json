@@ -1,6 +1,6 @@
 {
   "description": "Cross-language conformance for Config Bus `mcp.acl` loading. Each case supplies the JSON value that a bridge would receive from `Config.get(\"mcp.acl\")`; the bridge's acl_builder must build an ACL with the documented rule count + default_effect, or reject malformed input with the documented error substring.",
-  "contract_version": "1.0",
+  "contract_version": "1.1",
   "test_cases": [
     {
       "id": "null_returns_no_acl",
@@ -20,8 +20,12 @@
       "input": {
         "rules": [
           {
-            "callers": ["role:admin"],
-            "targets": ["sys.*"],
+            "callers": [
+              "role:admin"
+            ],
+            "targets": [
+              "sys.*"
+            ],
             "effect": "allow"
           }
         ]
@@ -50,12 +54,19 @@
         "default_effect": "deny",
         "rules": [
           {
-            "callers": ["role:admin"],
-            "targets": ["sys.*"],
+            "callers": [
+              "role:admin"
+            ],
+            "targets": [
+              "sys.*"
+            ],
             "effect": "allow",
             "description": "admin access",
             "conditions": {
-              "identity_types": ["human", "system"]
+              "identity_types": [
+                "human",
+                "system"
+              ]
             }
           }
         ]
@@ -71,13 +82,81 @@
       "input": {
         "default_effect": "deny",
         "rules": [
-          { "callers": ["role:admin"], "targets": ["sys.*"], "effect": "allow" },
-          { "callers": ["*"], "targets": ["sys.reload"], "effect": "deny" },
-          { "callers": ["*"], "targets": ["public.*"], "effect": "allow" }
+          {
+            "callers": [
+              "role:admin"
+            ],
+            "targets": [
+              "sys.*"
+            ],
+            "effect": "allow"
+          },
+          {
+            "callers": [
+              "*"
+            ],
+            "targets": [
+              "sys.reload"
+            ],
+            "effect": "deny"
+          },
+          {
+            "callers": [
+              "*"
+            ],
+            "targets": [
+              "public.*"
+            ],
+            "effect": "allow"
+          }
         ]
       },
       "expected_acl": {
         "rule_count": 3,
+        "default_effect": "deny"
+      }
+    },
+    {
+      "id": "approval_required_accepted",
+      "description": "An `allow` rule may carry `approval: \"required\"` (apcore 0.28.0, PROTOCOL_SPEC 6.1.6, argument-scoped approval).",
+      "input": {
+        "rules": [
+          {
+            "callers": [
+              "@external"
+            ],
+            "targets": [
+              "system.control.*"
+            ],
+            "effect": "allow",
+            "approval": "required"
+          }
+        ]
+      },
+      "expected_acl": {
+        "rule_count": 1,
+        "default_effect": "deny"
+      }
+    },
+    {
+      "id": "approval_not_required_accepted",
+      "description": "`approval: \"not_required\"` MUST be accepted. It is spec-sanctioned (PROTOCOL_SPEC 6.1.6) and is apcore's own default for the field, so a rule carrying it loads from apcore's native `acl/` directory; a bridge that rejects it as a redundant spelling is stricter than the schema it bridges, and the identical rule then fails only on the Config Bus path. Regression pin: apcore-mcp-rust and apcore-mcp-typescript each independently narrowed this set to `required` only, which this case exists to prevent recurring.",
+      "input": {
+        "rules": [
+          {
+            "callers": [
+              "*"
+            ],
+            "targets": [
+              "public.*"
+            ],
+            "effect": "allow",
+            "approval": "not_required"
+          }
+        ]
+      },
+      "expected_acl": {
+        "rule_count": 1,
         "default_effect": "deny"
       }
     }
@@ -86,14 +165,24 @@
     {
       "id": "invalid_default_effect",
       "description": "default_effect must be 'allow' or 'deny'.",
-      "input": { "default_effect": "maybe", "rules": [] },
+      "input": {
+        "default_effect": "maybe",
+        "rules": []
+      },
       "expected_error_substring": "default_effect must be"
     },
     {
       "id": "missing_callers",
       "description": "A rule missing 'callers' is rejected.",
       "input": {
-        "rules": [{ "targets": ["x.*"], "effect": "allow" }]
+        "rules": [
+          {
+            "targets": [
+              "x.*"
+            ],
+            "effect": "allow"
+          }
+        ]
       },
       "expected_error_substring": "'callers' must be a non-empty list"
     },
@@ -101,7 +190,14 @@
       "id": "missing_targets",
       "description": "A rule missing 'targets' is rejected.",
       "input": {
-        "rules": [{ "callers": ["*"], "effect": "allow" }]
+        "rules": [
+          {
+            "callers": [
+              "*"
+            ],
+            "effect": "allow"
+          }
+        ]
       },
       "expected_error_substring": "'targets' must be a non-empty list"
     },
@@ -109,7 +205,17 @@
       "id": "invalid_effect",
       "description": "A rule's effect must be 'allow' or 'deny'.",
       "input": {
-        "rules": [{ "callers": ["*"], "targets": ["*"], "effect": "maybe" }]
+        "rules": [
+          {
+            "callers": [
+              "*"
+            ],
+            "targets": [
+              "*"
+            ],
+            "effect": "maybe"
+          }
+        ]
       },
       "expected_error_substring": "'effect' must be 'allow' or 'deny'"
     },
@@ -118,7 +224,16 @@
       "description": "Unknown keys on a rule are rejected.",
       "input": {
         "rules": [
-          { "callers": ["*"], "targets": ["*"], "effect": "allow", "bogus": true }
+          {
+            "callers": [
+              "*"
+            ],
+            "targets": [
+              "*"
+            ],
+            "effect": "allow",
+            "bogus": true
+          }
         ]
       },
       "expected_error_substring": "unexpected keys"
@@ -132,13 +247,35 @@
     {
       "id": "rules_non_array",
       "description": "The `rules` field must be a list.",
-      "input": { "rules": "oops" },
+      "input": {
+        "rules": "oops"
+      },
       "expected_error_substring": "rules must be a list"
+    },
+    {
+      "id": "approval_unknown_value",
+      "description": "A value outside the closed set {required, not_required} is rejected.",
+      "input": {
+        "rules": [
+          {
+            "callers": [
+              "*"
+            ],
+            "targets": [
+              "*"
+            ],
+            "effect": "allow",
+            "approval": "sometimes"
+          }
+        ]
+      },
+      "expected_error_substring": "'approval' must be"
     }
   ],
   "notes": {
     "known_divergences": [
-      "All three SDK ACL constructors take `rules: Vec<ACLRule> | list[ACLRule] | ACLRule[]` and a `default_effect` string. Python and TypeScript store `description` as a required string (empty when omitted); Rust stores it as Option<String> (None when omitted). Conformance cases only assert rule counts and default_effect, not individual rule-field reconstructions."
+      "All three SDK ACL constructors take `rules: Vec<ACLRule> | list[ACLRule] | ACLRule[]` and a `default_effect` string. Python and TypeScript store `description` as a required string (empty when omitted); Rust stores it as Option<String> (None when omitted). Conformance cases only assert rule counts and default_effect, not individual rule-field reconstructions.",
+      "The `deny` + `approval: required` rejection (PROTOCOL_SPEC 6.1.6 rule 2) is deliberately NOT a shared error_case: the rejection originates in apcore's own ACLRule/ACL constructor rather than in the bridge, and its message wording differs per language (Rust wraps it as a Config error naming `mcp.acl`; Python surfaces apcore's ACLRuleError). It is covered by a per-language test in each bridge instead."
     ]
   }
 }
