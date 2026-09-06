@@ -184,6 +184,7 @@
 - **🛡️ Security**: Built-in JWT authentication, PEM key support, and runtime approval elicitation.
 - **🤖 AI Optimized**: Enriched metadata (`x-when-to-use`), error sanitization with AI guidance, and strict mode for OpenAI.
 - **🔄 Dynamic**: Reflects module registrations/unregistrations at runtime without restarting.
+- **📄 OpenAPI Backend**: Point the bridge at an `openapi.json` and every operation becomes an MCP tool, proxied over HTTP — no apcore project required *(0.20+; the first backend source with full Rust parity)*.
 
 ---
 
@@ -221,6 +222,8 @@ The project is architected as a set of modular features, each with its own speci
 - [Explorer UI](docs/features/explorer-ui.md) — Interactive dev dashboard
 - [Markdown](docs/features/markdown.md) — Rich Markdown tool descriptions via apcore-toolkit
 - [System Management Extension](docs/features/system-management-extension.md) — `com.aiperceivable/management` MCP extension (Phase A)
+- [ACL Builder](docs/features/acl-builder.md) — `mcp.acl` → `apcore.ACL`, with apcore 0.29.0's pattern-array shape closure
+- [OpenAPI Backend](docs/features/openapi-backend.md) — Serve any OpenAPI 3.0/3.1 API as MCP tools
 
 ---
 

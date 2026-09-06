@@ -6,6 +6,222 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.20.0] - 2026-09-06
+
+> **Shipped in all three bridges.** Unlike 0.18.0 and 0.19.0, this release is not contract-only:
+> every clause below is implemented in `apcore-mcp-python` 0.20.0, `apcore-mcp-typescript` 0.20.0
+> and `apcore-mcp-rust` 0.20.0, and both conformance fixtures are driven by all three. See each
+> bridge's own CHANGELOG for its per-language details.
+
+SDK-floor and feature release, driven by apcore 0.29.0/0.30.0 and apcore-toolkit 0.11.0/0.11.1. apcore 0.29.0
+closed the shape of an ACL pattern array at every entry point (a **breaking** change for any
+`mcp.acl` file carrying one of the affected shapes); apcore-toolkit 0.11.0 shipped the OpenAPI
+Scanner, which makes an OpenAPI document a viable backend source for the first time; and apcore
+0.30.0 (2026-09-06) declared the path-typed configuration key set and the project-root resolution
+base, which reaches the `mcp.openapi.spec` key this entry introduces.
+
+### Changed — required SDK floors
+
+- **apcore `>=0.28.0` → `>=0.30.0`; apcore-toolkit `>=0.10.2` → `>=0.11.1`**, across all three
+  bridges. Three separate reasons, kept separate because they expire differently:
+
+  | Floor | Why |
+  |---|---|
+  | apcore **0.29.0** | The ACL correctness floor. On 0.28.0 the pattern-array shapes below load silently and the deployment believes it has a rule it does not have |
+  | apcore-toolkit **0.11.0** | `OpenAPIScanner` does not exist below it, and it is where the Rust `HTTPProxyRegistryWriter` stopped rejecting `HEAD` / `OPTIONS` / `TRACE` before any network call |
+  | apcore **0.30.0** | Forced transitively — apcore-toolkit 0.11.1 requires it — and independently needed: `Config.project_root` is what `mcp.openapi.spec` resolves a relative path against |
+  | apcore-toolkit **0.11.1** | A floor bump only (to apcore 0.30.0). No toolkit API changed; the scanner and the writer are byte-identical to 0.11.0 |
+
+  **What apcore 0.30.0 does *not* reach.** Its §5.12.6 binding-discovery contract, the
+  `bindings.dir` / `bindings.pattern` defaults, the `target_id` → `target` binding-field repair and
+  the regenerated `config_key_governance.json` all concern apcore's `Config` / `BindingLoader`
+  layer. Verified by grep across all three `src/` trees: **no bridge references `extensions.root`,
+  `acl.root`, `schema.root`, `bindings.dir`, `bindings.pattern`, apcore's `BindingLoader`, or
+  `project_root` today.** The §9.2.2 path-resolution change is additionally a **deprecation phase**
+  — the 1.x line keeps current semantics exactly — so nothing in a shipped bridge changes meaning.
+
+  Other apcore 0.29.0 changes are likewise out of scope: `ApprovalRequest` gains `caller_id`
+  and `action` (additive, populated at apcore's own `BuiltinApprovalGate` construction site — the
+  bridge's [Approval Handler](docs/features/approval-handler.md) reads the request, never builds
+  one); `CancelToken.raise_if_cancelled()` is an additive alias for `check()`; Rust's
+  `APCore::on` / `off` now return `Result` and `ACLRule` became `#[non_exhaustive]`, both of which
+  touch only the Rust bridge's construction sites. apcore-toolkit's TUI View Model is a CLI
+  table-rendering surface with no consumer here.
+
+- **`mcp.openapi.spec` is the `mcp` namespace's first path-typed key, and apcore 0.30.0's
+  protections do not cover it.** Measured, not inferred: `Config.path_typed_keys()` returns a
+  hardcoded tuple of apcore's own four keys and never consults a namespace registered through
+  `Config.register_namespace`, and the §9.2.1 requirement-5 empty-value discard is gated on that
+  same fixed set. So `APCORE_MCP_OPENAPI_SPEC=` is an override to `""` that resolves to the working
+  directory — exactly the silent failure apcore 0.30.0 closed for `APCORE_ACL_ROOT=`, in a
+  namespace the fix does not extend to. The bridge therefore owns three rules of its own; see
+  [OpenAPI Backend § The spec location is a path-typed key](docs/features/openapi-backend.md#the-spec-location-is-a-path-typed-key).
+
+  This is the one place where being a *new* key is an advantage. apcore's §9.2.2 forbids adopting
+  the project-root rule ahead of its deprecation window because its four keys have deployed
+  configurations relying on the current bases. `mcp.openapi.spec` has no deployed population at
+  all — it has never shipped — so it adopts the target semantics immediately rather than inheriting
+  a deprecation cycle it owes nobody.
+
+### Added — contract
+
+- **ACL Builder gets its own spec — new document
+  [`docs/features/acl-builder.md`](docs/features/acl-builder.md).** `build_acl_from_config` has
+  shipped in all three bridges since 0.14.0 with a shared conformance fixture and no feature spec;
+  apcore 0.29.0's §6.2.1 closure is too large a change to land in a doc comment. The document
+  specifies the `mcp.acl` schema, the division of validation labour between the bridge and apcore,
+  the error-type contract, and the two behaviour changes below.
+
+- **OpenAPI Backend — new document
+  [`docs/features/openapi-backend.md`](docs/features/openapi-backend.md).** A third backend source:
+  point the bridge at an OpenAPI 3.0/3.1 document and every operation becomes an MCP tool, proxied
+  over HTTP. The whole path is composition of shipped code — `load_spec` → `OpenAPIScanner.scan` →
+  `HTTPProxyRegistryWriter.write` → `Registry` → the existing bridge — so it introduces no scanning
+  logic, no schema conversion and no new execution path. New Config Bus section `mcp.openapi` and
+  seven CLI flags (`--from-openapi`, `--openapi-base-url`, `--openapi-prefix`,
+  `--openapi-include`, `--openapi-exclude`, `--openapi-header`, `--openapi-no-deprecated`).
+
+  This is the **first backend source with full Rust parity**: directory auto-discovery is
+  Python/TypeScript-only because apcore's public Rust API has no runtime directory discovery, and
+  an OpenAPI document needs no discoverer.
+
+  Two governance findings are recorded normatively rather than left implicit. **Every scanned
+  module arrives with `requires_approval = false`** — the toolkit infers annotations from the HTTP
+  method alone, and `POST` / `PATCH` carry no behavioural hint at all, so a `POST /charges` that
+  moves money is annotated exactly like a `POST /echo` and the approval gate fires for neither. And
+  **an ACL `targets` pattern written against an operation name is owned by the upstream API's
+  authors**: a document that renames `deleteUser` to `removeUser` changes the derived `module_id`,
+  and a `targets: ["deleteUser"]` deny rule stops matching — under `default_effect: allow` that is
+  a fail-open of the same shape apcore#112 closed inside the ACL. Both carry required mitigations:
+  a startup WARNING when write-method modules register with no ACL attached, and a mandatory
+  `prefix` in mixed deployments so a catch-all deny can be written against something the upstream
+  does not control.
+
+### Changed — contract
+
+- **`mcp.acl` no longer accepts a `callers` / `targets` array outside PROTOCOL_SPEC §6.2.1's closed
+  shape. BREAKING for any deployment carrying one.** `[]`, `["$or"]`, `["$not"]`,
+  `["$not", p1, p2, …]`, an empty pattern string, and a reserved token at any index but 0 are
+  rejected at every entry point — file loading, direct construction and runtime insertion alike.
+  Through apcore 0.28.0 all of these matched nothing and left the rule inert, which on a `deny`
+  rule under `default_effect: allow` **permitted the call the operator wrote the rule to block**.
+  The affected population is exactly the one that believes it has a rule and does not.
+
+  Migration: `targets: []` meaning "everything" becomes `["*"]`; meaning "nothing" means the rule
+  should be deleted. **The multi-operand `$not` has no mechanical rewrite** — `["$not", p1]`
+  preserves what the rule has actually been doing, but if `NOT (p1 OR p2)` was intended, a leading
+  `deny` is not equivalent, because a non-matching rule lets evaluation continue to later rules and
+  a `deny` ends it. Migration tooling **MUST NOT** apply it automatically.
+
+- **`build_acl_from_config`'s per-rule validation order is realigned to §6.2.1's, which is
+  normative for the first time.** All three bridges currently validate
+  `callers` → `targets` → `effect` → `approval`; §6.2.1 fixes the order as `effect` → `approval` →
+  `callers` → `targets`, with `default_effect` judged ahead of every rule and the rule index
+  dominating. A rule wrong in both `effect` and `callers` was therefore reported for `callers` by
+  the Config Bus door and for `effect` by apcore's — the same file, two different answers depending
+  on which door it reached first. The unknown-key check stays ahead of all four; the
+  `default_effect` check already sits ahead of the rule loop.
+
+- **A §6.2.1 rejection MUST be re-raised in the bridge's own error type, with the rule index.**
+  apcore raises `ACLRuleError` from inside `ACLRule(...)`, and its message names the *type*, not
+  the rule — `ACLRule has an invalid 'targets' (PROTOCOL_SPEC §6.2.1): …`. That is correct for
+  apcore, where a rule under construction has no position yet, and useless to an operator holding a
+  20-rule YAML block, since the closure's entire remedy is its message. In Python it is also the
+  wrong *type*: `ACLRuleError` extends `ModuleError`, not `ValueError`, so
+  `build_acl_from_config`'s documented "raises `ValueError`" contract became false for every
+  §6.2.1 fault. All three bridges now catch and re-raise with the `mcp.acl.rules[i]` prefix
+  (`mcp.acl` for a section-scoped fault), preserving apcore's message verbatim after the prefix and
+  chaining the original as the cause. The Rust bridge already wrapped; Python and TypeScript let it
+  escape raw and now do not. TypeScript and Rust additionally construct a throwaway single-rule ACL
+  per rule to learn *which* rule apcore refused — neither `apcore-js` nor `apcore-rust` exports a
+  per-rule validator, and both validate inside the whole-list constructor.
+
+- **New required startup diagnostic: the tier-2 never-matches warning.** Closing the arities does
+  not exhaust the inert class — `["$not", "*"]` has legal arity, exactly one operand, and matches
+  nothing, producing the identical fail-open through a well-formed array. apcore reports these
+  through `ACL.validate_rules()` as findings that load, change no decision, and are never rejected.
+  **No bridge called `validate_rules()` before this release** — verified by grep across all three
+  `src/` trees. `serve()` / `async_serve()` now call it
+  once the registry is assembled and log each finding at WARNING, naming the rule index and the
+  field — prominent, non-fatal, and never a startup failure, exactly like the
+  unprotected-control-surface guard added in 0.19.0 that it sits beside.
+
+- **The bridge projects every scanner-derived module ID into apcore's legal alphabet — without it
+  the OpenAPI backend serves nothing.** Found by writing `openapi_backend.json`, not by reading the
+  specification. `derive_module_id` sanitizes to `[A-Za-z0-9_.-]`; apcore's registry accepts only
+  `^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$` and enforces it at `Registry.register` **and** at
+  `Executor.call`. Measured against apcore 0.30.0 and apcore-toolkit 0.11.1, of nine realistic
+  operation shapes **only two register unrepaired**, and the canonical Swagger Petstore
+  (`listPets`, `createPets`, `showPetById`) is entirely in the rejected set. Run end-to-end it
+  scans cleanly, fails registration on every operation as a per-module `WriteResult`, and yields an
+  **empty registry** — which under this entry's own log-and-continue rule is a server that starts,
+  advertises nothing, and emits one ERROR line per operation.
+
+  The projection is: lowercase, then `-` → `_`; if every dot-segment then matches
+  `^[a-z][a-z0-9_]*$` use it, otherwise **skip the operation** with a WARNING naming the derived ID
+  and the offending segment. Steps one and two are mechanical and lossless up to case; the third is
+  where the bridge stops, because repairing a segment that does not begin with a letter (`/v1/2fa`)
+  means *inventing* a character — a naming decision that belongs to the operator's own
+  `derive_module_id` hook. It runs **after** any caller-supplied `transform_module`, so the
+  invariant *every registered ID is apcore-legal* holds unconditionally, and **before** the
+  scanner's `deduplicate_ids`, because lowercasing can create a collision the document did not have.
+
+  **This is an upstream contract gap as much as a bridge concern** and should be reported to
+  apcore-toolkit: `OpenAPIScanner` and `HTTPProxyRegistryWriter` are documented as an end-to-end
+  pair, and the pair cannot serve the reference specification the scanner was verified against —
+  that verification asserted byte-identical `ScannedModule` output across SDKs, which never
+  exercised registrability. The repair belongs upstream long-term; it lives in the bridge now
+  because the bridge cannot ship a backend that serves nothing, and because moving it is a breaking
+  change to a byte-identical corpus one release old.
+
+### Added — conformance
+
+Both fixtures are landed and **driven by all three bridges**. Their expectations were computed by
+running the real upstreams — apcore 0.29.0's `ACLRule` errors and apcore-toolkit 0.11.1's scanner —
+rather than transcribed from prose, and writing them is what surfaced the module-ID alphabet gap
+above, two upstream metadata gaps, and a cross-SDK error-wording divergence that an earlier draft
+of this fixture had frozen by accident (see below).
+
+- **`conformance/fixtures/acl_config.json` — `contract_version` 1.1 → 1.2, sixteen new cases** (11 `test_cases`, 21 `error_cases` in total). Three pin the accepted boundaries and twelve the rejected shapes as six `callers` / `targets` mirrored pairs; seven
+  pin the §6.2.1 closure at the `mcp.acl` door (`["$or", "a"]` accepted, `["$or"]` /
+  `["$not"]` / `["$not", "a", "b"]` / `["a", ""]` / `["$or", "$not", "a"]` rejected, `["$orders.*"]`
+  accepted — detection is by equality, never by a `$` prefix). The eighth,
+  `effect_reported_before_callers`, is a rule wrong on two axes and is the only case that can see
+  the ordering realignment above; every existing error case is single-fault. Mirrors are required
+  for `callers` and `targets` on every shape case — an implementation that validates one field and
+  infers the other is precisely the defect the mirrors exist to catch, and apcore's own
+  `acl_pattern_arity.json` (41 cases) carries the same pairs for the same reason.
+
+  Each `expected_error_substring` pins the **bridge's** prefix and a stable fragment of apcore's
+  reason, never apcore's full sentence: the wording belongs to apcore and a shared fixture that
+  pins it is pinning the wrong repository's text. Same reasoning that already keeps
+  `deny` + `approval: required` out of the shared error cases.
+
+- **New shared fixture `conformance/fixtures/openapi_backend.json`, `contract_version` 1.0.** Sixteen cases in three sections — `test_cases` (9, document → modules), `config_cases` (3, how the `spec` value resolves) and `error_cases` (4, fatal configurations). Nine
+  cases pinning only what this bridge adds on top of the toolkit's own 24-case `openapi_scan.json`
+  corpus: the projection of a derived `module_id` onto the MCP tool name (verbatim, dots retained)
+  and the OpenAI function name (dash-normalized), prefix application, the HTTP-method →
+  `ToolAnnotations` mapping, and the four fatal configuration errors. `post_carries_no_behavioral_hint`
+  pins the approval gap as a *fact* so it cannot be closed accidentally in one language only. The
+  toolkit's own scan-error wording and the proxy's request shaping are deliberately excluded.
+
+### Fixed — documentation
+
+- **`system-management-extension.md` was missing from the mkdocs nav.** Shipped in 0.19.0 and
+  reachable only by direct URL since; the documentation site's Features section never listed it.
+- **`conformance/README.md`'s fixture table was two releases stale.** It listed five fixtures,
+  omitting `system_surface.json` (added in 0.19.0), and gave `acl_config.json` as 6 cases when the
+  file has carried 8 `test_cases` and 8 `error_cases` since the 0.19.0 `approval` additions.
+
+### Shipped, unlike 0.18.0 and 0.19.0
+
+Those two releases recorded a contract and left conformance to a later per-language pass. This one
+ships with its implementations: `apcore-mcp-python` 0.20.0 (1015 tests), `apcore-mcp-typescript`
+0.20.0 (782 tests), `apcore-mcp-rust` 0.20.0 (1017 lib + 47 integration), each driving both
+fixtures. See each adapter's own CHANGELOG for its per-language detail — in particular the Rust
+bridge's `ACLRule` `#[non_exhaustive]` migration, which is a compile break this release absorbs.
+
+
 ## [0.19.0] - 2026-09-01
 
 Spec-contract release, driven by apcore 0.28.0 and three open issues on `system.*` management

@@ -1,6 +1,6 @@
 {
-  "description": "Cross-language conformance for Config Bus `mcp.acl` loading. Each case supplies the JSON value that a bridge would receive from `Config.get(\"mcp.acl\")`; the bridge's acl_builder must build an ACL with the documented rule count + default_effect, or reject malformed input with the documented error substring.",
-  "contract_version": "1.1",
+  "description": "Cross-language conformance for Config Bus `mcp.acl` loading. Each case supplies the JSON value that a bridge would receive from `Config.get(\"mcp.acl\")`; the bridge's acl_builder must build an ACL with the documented rule count + default_effect, or reject malformed input with the documented error substring(s).\n\ncontract_version 1.2 adds PROTOCOL_SPEC 6.2.1's closed pattern-array shape (apcore 0.29.0, apcore#112) and the normative per-rule validation ORDER. Error cases may carry `expected_error_substring` (a single string, as in 1.0/1.1) and/or `expected_error_substrings` (an array); a driver MUST assert every fragment present in either field. The array form exists so a case can pin BOTH the bridge's `mcp.acl.rules[i]` prefix and the axis named by the reason -- without it, every shape case would carry an identical expectation and the fixture could not tell them apart.",
+  "contract_version": "1.2",
   "test_cases": [
     {
       "id": "null_returns_no_acl",
@@ -159,6 +159,71 @@
         "rule_count": 1,
         "default_effect": "deny"
       }
+    },
+    {
+      "id": "or_with_one_operand_accepted",
+      "description": "`$or` requires AT LEAST one operand, not at least two. A one-operand `$or` is degenerate but meaningful and MUST load. An implementation that reads the rule as minItems:2 rejects it and fails here.",
+      "input": {
+        "rules": [
+          {
+            "callers": [
+              "$or",
+              "admin"
+            ],
+            "targets": [
+              "*"
+            ],
+            "effect": "allow"
+          }
+        ]
+      },
+      "expected_acl": {
+        "rule_count": 1,
+        "default_effect": "deny"
+      }
+    },
+    {
+      "id": "not_with_one_operand_accepted",
+      "description": "Control: exactly one operand is the ONLY legal `$not` arity, and it must still load. `callers` is a literal rather than `*` on purpose: a driver that probes `default_effect` by calling `check()` with a caller/target pair it expects NO rule to match cannot use `*` here, because `['$not', 'banned.*']` matches almost every module ID and the rule would fire on the probe. The apcore-mcp-rust driver does exactly that.",
+      "input": {
+        "rules": [
+          {
+            "callers": [
+              "admin"
+            ],
+            "targets": [
+              "$not",
+              "banned.*"
+            ],
+            "effect": "allow"
+          }
+        ]
+      },
+      "expected_acl": {
+        "rule_count": 1,
+        "default_effect": "deny"
+      }
+    },
+    {
+      "id": "dollar_prefixed_literal_accepted",
+      "description": "Reserved-token detection is by EQUALITY, never by a `$` prefix or a substring. `$orders.*` is an ordinary pattern that merely begins with the same character and MUST load. An implementation that screens on `startswith('$')` rejects it and fails here.",
+      "input": {
+        "rules": [
+          {
+            "callers": [
+              "*"
+            ],
+            "targets": [
+              "$orders.*"
+            ],
+            "effect": "allow"
+          }
+        ]
+      },
+      "expected_acl": {
+        "rule_count": 1,
+        "default_effect": "deny"
+      }
     }
   ],
   "error_cases": [
@@ -270,12 +335,297 @@
         ]
       },
       "expected_error_substring": "'approval' must be"
+    },
+    {
+      "id": "empty_array_in_callers_rejected",
+      "description": "An EMPTY pattern array. apcore#112's own framing: `ACL.load` rejected an OMITTED callers/targets and PERMITTED an empty one, so a plain YAML file reached the fail-open. Caught by the bridge's own non-empty check, which predates the closure -- hence the bridge's wording rather than apcore's.\n\nMirror: the same shape in `callers`. PROTOCOL_SPEC 6.2.1 constrains `callers` and `targets` IDENTICALLY, and an implementation that validates one field and infers the other is exactly the defect these pairs exist to catch -- apcore's own `acl_pattern_arity.json` carries the same mirrors for the same reason.",
+      "input": {
+        "rules": [
+          {
+            "callers": [],
+            "targets": [
+              "*"
+            ],
+            "effect": "allow"
+          }
+        ]
+      },
+      "expected_error_substrings": [
+        "mcp.acl.rules[0]",
+        "'callers' must be a non-empty list"
+      ],
+      "expected_error_names_field": "callers"
+    },
+    {
+      "id": "empty_array_in_targets_rejected",
+      "description": "An EMPTY pattern array. apcore#112's own framing: `ACL.load` rejected an OMITTED callers/targets and PERMITTED an empty one, so a plain YAML file reached the fail-open. Caught by the bridge's own non-empty check, which predates the closure -- hence the bridge's wording rather than apcore's.\n\nMirror: the same shape in `targets`. PROTOCOL_SPEC 6.2.1 constrains `callers` and `targets` IDENTICALLY, and an implementation that validates one field and infers the other is exactly the defect these pairs exist to catch -- apcore's own `acl_pattern_arity.json` carries the same mirrors for the same reason.",
+      "input": {
+        "rules": [
+          {
+            "callers": [
+              "*"
+            ],
+            "targets": [],
+            "effect": "allow"
+          }
+        ]
+      },
+      "expected_error_substrings": [
+        "mcp.acl.rules[0]",
+        "'targets' must be a non-empty list"
+      ],
+      "expected_error_names_field": "targets"
+    },
+    {
+      "id": "or_with_no_operands_in_callers_rejected",
+      "description": "`$or` with no operands can never match. Through apcore 0.28.0 the matcher returned false, reading an ARITY fault as a SCOPE decision: the rule went inert, and on a `deny` rule under `default_effect: allow` that PERMITTED the call the operator wrote it to block.\n\nMirror: the same shape in `callers`. PROTOCOL_SPEC 6.2.1 constrains `callers` and `targets` IDENTICALLY, and an implementation that validates one field and infers the other is exactly the defect these pairs exist to catch -- apcore's own `acl_pattern_arity.json` carries the same mirrors for the same reason.",
+      "input": {
+        "rules": [
+          {
+            "callers": [
+              "$or"
+            ],
+            "targets": [
+              "*"
+            ],
+            "effect": "allow"
+          }
+        ]
+      },
+      "expected_error_substrings": [
+        "mcp.acl.rules[0]"
+      ],
+      "expected_error_names_field": "callers"
+    },
+    {
+      "id": "or_with_no_operands_in_targets_rejected",
+      "description": "`$or` with no operands can never match. Through apcore 0.28.0 the matcher returned false, reading an ARITY fault as a SCOPE decision: the rule went inert, and on a `deny` rule under `default_effect: allow` that PERMITTED the call the operator wrote it to block.\n\nMirror: the same shape in `targets`. PROTOCOL_SPEC 6.2.1 constrains `callers` and `targets` IDENTICALLY, and an implementation that validates one field and infers the other is exactly the defect these pairs exist to catch -- apcore's own `acl_pattern_arity.json` carries the same mirrors for the same reason.",
+      "input": {
+        "rules": [
+          {
+            "callers": [
+              "*"
+            ],
+            "targets": [
+              "$or"
+            ],
+            "effect": "allow"
+          }
+        ]
+      },
+      "expected_error_substrings": [
+        "mcp.acl.rules[0]"
+      ],
+      "expected_error_names_field": "targets"
+    },
+    {
+      "id": "not_with_no_operands_in_callers_rejected",
+      "description": "`$not` with no operands. PROTOCOL_SPEC 6.2.1 previously called this 'fail-closed', a label predating 6.1.1 and wrong on a `deny` rule -- a non-match is fail-closed on `allow` and fail-OPEN on `deny`.\n\nMirror: the same shape in `callers`. PROTOCOL_SPEC 6.2.1 constrains `callers` and `targets` IDENTICALLY, and an implementation that validates one field and infers the other is exactly the defect these pairs exist to catch -- apcore's own `acl_pattern_arity.json` carries the same mirrors for the same reason.",
+      "input": {
+        "rules": [
+          {
+            "callers": [
+              "$not"
+            ],
+            "targets": [
+              "*"
+            ],
+            "effect": "allow"
+          }
+        ]
+      },
+      "expected_error_substrings": [
+        "mcp.acl.rules[0]"
+      ],
+      "expected_error_names_field": "callers"
+    },
+    {
+      "id": "not_with_no_operands_in_targets_rejected",
+      "description": "`$not` with no operands. PROTOCOL_SPEC 6.2.1 previously called this 'fail-closed', a label predating 6.1.1 and wrong on a `deny` rule -- a non-match is fail-closed on `allow` and fail-OPEN on `deny`.\n\nMirror: the same shape in `targets`. PROTOCOL_SPEC 6.2.1 constrains `callers` and `targets` IDENTICALLY, and an implementation that validates one field and infers the other is exactly the defect these pairs exist to catch -- apcore's own `acl_pattern_arity.json` carries the same mirrors for the same reason.",
+      "input": {
+        "rules": [
+          {
+            "callers": [
+              "*"
+            ],
+            "targets": [
+              "$not"
+            ],
+            "effect": "allow"
+          }
+        ]
+      },
+      "expected_error_substrings": [
+        "mcp.acl.rules[0]"
+      ],
+      "expected_error_names_field": "targets"
+    },
+    {
+      "id": "not_with_two_operands_in_callers_rejected",
+      "description": "The multi-operand `$not` was implementation-defined: every SDK consulted the first operand and dropped the rest, so this array silently meant `['$not','secrets.a']` and an `allow` rule GRANTED `secrets.b` -- the second pattern the operator excluded. WIDER THAN WRITTEN, consistently, in all three SDKs. There is no mechanical migration: `['$not', p1]` preserves the actual behaviour, while 'neither p1 nor p2' needs a leading `deny`, which ENDS rule evaluation where a non-match lets it continue.\n\nMirror: the same shape in `callers`. PROTOCOL_SPEC 6.2.1 constrains `callers` and `targets` IDENTICALLY, and an implementation that validates one field and infers the other is exactly the defect these pairs exist to catch -- apcore's own `acl_pattern_arity.json` carries the same mirrors for the same reason.",
+      "input": {
+        "rules": [
+          {
+            "callers": [
+              "$not",
+              "secrets.a",
+              "secrets.b"
+            ],
+            "targets": [
+              "*"
+            ],
+            "effect": "allow"
+          }
+        ]
+      },
+      "expected_error_substrings": [
+        "mcp.acl.rules[0]"
+      ],
+      "expected_error_names_field": "callers"
+    },
+    {
+      "id": "not_with_two_operands_in_targets_rejected",
+      "description": "The multi-operand `$not` was implementation-defined: every SDK consulted the first operand and dropped the rest, so this array silently meant `['$not','secrets.a']` and an `allow` rule GRANTED `secrets.b` -- the second pattern the operator excluded. WIDER THAN WRITTEN, consistently, in all three SDKs. There is no mechanical migration: `['$not', p1]` preserves the actual behaviour, while 'neither p1 nor p2' needs a leading `deny`, which ENDS rule evaluation where a non-match lets it continue.\n\nMirror: the same shape in `targets`. PROTOCOL_SPEC 6.2.1 constrains `callers` and `targets` IDENTICALLY, and an implementation that validates one field and infers the other is exactly the defect these pairs exist to catch -- apcore's own `acl_pattern_arity.json` carries the same mirrors for the same reason.",
+      "input": {
+        "rules": [
+          {
+            "callers": [
+              "*"
+            ],
+            "targets": [
+              "$not",
+              "secrets.a",
+              "secrets.b"
+            ],
+            "effect": "allow"
+          }
+        ]
+      },
+      "expected_error_substrings": [
+        "mcp.acl.rules[0]"
+      ],
+      "expected_error_names_field": "targets"
+    },
+    {
+      "id": "empty_pattern_string_in_callers_rejected",
+      "description": "An empty pattern STRING matches no legal module ID. `schemas/acl-config.schema.json` has declared minLength:1 on both fields' items since the file existed, enforced by nothing -- the same declared-but-unenforced shape as apcore#107 and #111.\n\nMirror: the same shape in `callers`. PROTOCOL_SPEC 6.2.1 constrains `callers` and `targets` IDENTICALLY, and an implementation that validates one field and infers the other is exactly the defect these pairs exist to catch -- apcore's own `acl_pattern_arity.json` carries the same mirrors for the same reason.",
+      "input": {
+        "rules": [
+          {
+            "callers": [
+              "api.*",
+              ""
+            ],
+            "targets": [
+              "*"
+            ],
+            "effect": "allow"
+          }
+        ]
+      },
+      "expected_error_substrings": [
+        "mcp.acl.rules[0]"
+      ],
+      "expected_error_names_field": "callers"
+    },
+    {
+      "id": "empty_pattern_string_in_targets_rejected",
+      "description": "An empty pattern STRING matches no legal module ID. `schemas/acl-config.schema.json` has declared minLength:1 on both fields' items since the file existed, enforced by nothing -- the same declared-but-unenforced shape as apcore#107 and #111.\n\nMirror: the same shape in `targets`. PROTOCOL_SPEC 6.2.1 constrains `callers` and `targets` IDENTICALLY, and an implementation that validates one field and infers the other is exactly the defect these pairs exist to catch -- apcore's own `acl_pattern_arity.json` carries the same mirrors for the same reason.",
+      "input": {
+        "rules": [
+          {
+            "callers": [
+              "*"
+            ],
+            "targets": [
+              "api.*",
+              ""
+            ],
+            "effect": "allow"
+          }
+        ]
+      },
+      "expected_error_substrings": [
+        "mcp.acl.rules[0]"
+      ],
+      "expected_error_names_field": "targets"
+    },
+    {
+      "id": "reserved_token_off_index_zero_in_callers_rejected",
+      "description": "A pattern array is FLAT: index 0 is the only operator position, the operators do not nest, and there is no precedence. `['$or','$not','a']` is not 'or-of-not' -- it was an OR of two literals, one of which matched a module literally named `$not`, which 6.2.1's own reserved-token MUST NOT forbids. Rejecting the token off index 0 makes that clause hold by construction.\n\nMirror: the same shape in `callers`. PROTOCOL_SPEC 6.2.1 constrains `callers` and `targets` IDENTICALLY, and an implementation that validates one field and infers the other is exactly the defect these pairs exist to catch -- apcore's own `acl_pattern_arity.json` carries the same mirrors for the same reason.",
+      "input": {
+        "rules": [
+          {
+            "callers": [
+              "$or",
+              "$not",
+              "a"
+            ],
+            "targets": [
+              "*"
+            ],
+            "effect": "allow"
+          }
+        ]
+      },
+      "expected_error_substrings": [
+        "mcp.acl.rules[0]"
+      ],
+      "expected_error_names_field": "callers"
+    },
+    {
+      "id": "reserved_token_off_index_zero_in_targets_rejected",
+      "description": "A pattern array is FLAT: index 0 is the only operator position, the operators do not nest, and there is no precedence. `['$or','$not','a']` is not 'or-of-not' -- it was an OR of two literals, one of which matched a module literally named `$not`, which 6.2.1's own reserved-token MUST NOT forbids. Rejecting the token off index 0 makes that clause hold by construction.\n\nMirror: the same shape in `targets`. PROTOCOL_SPEC 6.2.1 constrains `callers` and `targets` IDENTICALLY, and an implementation that validates one field and infers the other is exactly the defect these pairs exist to catch -- apcore's own `acl_pattern_arity.json` carries the same mirrors for the same reason.",
+      "input": {
+        "rules": [
+          {
+            "callers": [
+              "*"
+            ],
+            "targets": [
+              "$or",
+              "$not",
+              "a"
+            ],
+            "effect": "allow"
+          }
+        ]
+      },
+      "expected_error_substrings": [
+        "mcp.acl.rules[0]"
+      ],
+      "expected_error_names_field": "targets"
+    },
+    {
+      "id": "effect_reported_before_callers",
+      "description": "A rule wrong on TWO axes. PROTOCOL_SPEC 6.2.1 fixes the order for the first time: `default_effect` ahead of every rule, then per rule `effect` -> `approval` -> `callers` -> `targets`, with the rule index dominating. This rule is refused for its `effect`, NOT its `callers`.\n\nAll three bridges currently validate `callers` -> `targets` -> `effect` -> `approval` -- the reverse -- so the same file is refused for `callers` at the Config Bus door and for `effect` at apcore's. Every other error case in this fixture is single-fault and cannot see the difference; this is the only case that can.",
+      "input": {
+        "rules": [
+          {
+            "callers": [],
+            "targets": [
+              "*"
+            ],
+            "effect": "Allow"
+          }
+        ]
+      },
+      "expected_error_substrings": [
+        "mcp.acl.rules[0]",
+        "'effect' must be 'allow' or 'deny'"
+      ],
+      "must_not_contain": "'callers' must be a non-empty list"
     }
   ],
   "notes": {
     "known_divergences": [
       "All three SDK ACL constructors take `rules: Vec<ACLRule> | list[ACLRule] | ACLRule[]` and a `default_effect` string. Python and TypeScript store `description` as a required string (empty when omitted); Rust stores it as Option<String> (None when omitted). Conformance cases only assert rule counts and default_effect, not individual rule-field reconstructions.",
-      "The `deny` + `approval: required` rejection (PROTOCOL_SPEC 6.1.6 rule 2) is deliberately NOT a shared error_case: the rejection originates in apcore's own ACLRule/ACL constructor rather than in the bridge, and its message wording differs per language (Rust wraps it as a Config error naming `mcp.acl`; Python surfaces apcore's ACLRuleError). It is covered by a per-language test in each bridge instead."
-    ]
+      "The `deny` + `approval: required` rejection (PROTOCOL_SPEC 6.1.6 rule 2) is deliberately NOT a shared error_case: the rejection originates in apcore's own ACLRule/ACL constructor rather than in the bridge, and its message wording differs per language (Rust wraps it as a Config error naming `mcp.acl`; Python surfaces apcore's ACLRuleError). It is covered by a per-language test in each bridge instead.",
+      "PROTOCOL_SPEC 6.2.1's TYPE fault (a `callers`/`targets` value that is not a list of strings, e.g. the bare string \"admin.*\") is deliberately absent from this fixture. It is unrepresentable in apcore-rust's `Vec<String>`, so it is not rejected at any door -- apcore classifies the rule UNEVALUABLE at check() time instead. The bridge's own `must be a non-empty list` check does catch the Python/TypeScript spelling, which is covered by `missing_callers` / `missing_targets`.",
+      "apcore-js reports the rule index itself (\"Rule 0 'targets' ...\") while apcore-python names the type (\"ACLRule has an invalid 'targets' ...\"), because apcore-js validates inside the ACL constructor over the whole list and apcore-python inside ACLRule.__post_init__. The bridge supplies `mcp.acl.rules[i]` in both cases, so the fixture does not care -- but a TypeScript bridge must validate RULE BY RULE (a throwaway single-rule ACL construction) to know the index at all, since apcore-js exports no per-rule validator."
+    ],
+    "error_case_fields": "`expected_error_substring` (string) and `expected_error_substrings` (array) are both accepted; assert every fragment present. `must_not_contain`, where present, asserts a fragment is ABSENT -- it is how an ordering case distinguishes 'reported the right axis' from 'reported something'.",
+    "what_a_shared_error_case_may_pin": "Only the bridge's own `mcp.acl.rules[i]` prefix plus a stable fragment of the reason -- never a full sentence originating in apcore. That wording belongs to apcore and may change there; a fixture in THIS repository that pins it is pinning another repository's text. Same reasoning that has always kept the `deny` + `approval: required` rejection out of these shared cases.",
+    "why_reasons_are_not_pinned": "Shape cases pin the bridge's `mcp.acl.rules[i]` prefix and the QUOTED FIELD NAME only, never the reason phrase. An earlier draft pinned fragments read off apcore-python (`reserved token`, `exactly one pattern`); measured against apcore-js 0.30.0, two of six did not match. Same fault, same rule index, entirely different sentence: apcore-python says \"ACLRule has an invalid 'targets' (PROTOCOL_SPEC 6.2.1): '$not' at index 0 MUST be followed by exactly one pattern, got 2\", while apcore-js says \"Rule 0 'targets' has an illegal pattern-array shape: '$not' at index 0 takes exactly one operand and this carries 2\". Both are correct and neither is this repository's to freeze -- which is exactly what conformance/README.md's 'what a shared error case may pin' rule already said, and what pinning fragments from a single SDK quietly violated. The discriminating power lost is small: each case still asserts THAT the shape is rejected and that the message names the right field, and `effect_reported_before_callers` still pins the axis ordering. The FIELD assertion is on the bare name, not the quoted form, for the same reason one step further down: apcore-python and apcore-js write \"'callers'\" while apcore-rust writes \"'callers[1]'\" — it names the offending element. Three SDKs, three spellings of the same fact, and the bare token is the only one all three share."
   }
 }

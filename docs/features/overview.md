@@ -1,11 +1,11 @@
 ---
-description: "Auto-generated index of all apcore-mcp feature specs with dependencies, release status, and the recommended 13-step implementation execution order from Schema Converter to Explorer UI."
+description: "Auto-generated index of all apcore-mcp feature specs with dependencies, release status, and the recommended implementation execution order from Schema Converter through the OpenAPI Backend to the Explorer UI."
 ---
 
 # Feature Overview
 
 > Auto-generated index of feature specs for apcore-mcp.
-> Updated: 2026-05-14
+> Updated: 2026-09-05
 
 ## Features
 
@@ -27,6 +27,8 @@ description: "Auto-generated index of all apcore-mcp feature specs with dependen
 | [Explorer UI](./explorer-ui.md) | Web dashboard for inspecting and testing tools. | mcp-server-factory, execution-router | released-v0.14.0 |
 | [Markdown](./markdown.md) | Renders `Tool.description` and OpenAI `function.description` as canonical apcore-toolkit Markdown for richer LLM tool-selection signal (`rich_description` / `richDescription` / `with_rich_description`). | apcore-toolkit 0.6+ (optional) | released-v0.15.0 |
 | [System Management Extension](./system-management-extension.md) | Unofficial MCP extension (`com.aiperceivable/management`) advertising the `system.*` management surface's shape in `initialize`; Phase A only. | mcp-server-factory | released-v0.19.0 (Phase A) |
+| [ACL Builder](./acl-builder.md) | Builds an `apcore.ACL` from the `mcp.acl` Config Bus section; owns the Config-Bus-shaped validation, wraps apcore's §6.2.1 pattern-array rejections with a rule index, and reports tier-2 never-matches findings at startup. | apcore 0.30.0 | released-v0.20.0 |
+| [OpenAPI Backend](./openapi-backend.md) | Third backend source — turns an OpenAPI 3.0/3.1 document into MCP tools via apcore-toolkit's `OpenAPIScanner` + `HTTPProxyRegistryWriter`. | apcore-toolkit 0.11.1, schema-converter, annotation-mapper, mcp-server-factory | released-v0.20.0 |
 
 ## Execution Order
 
@@ -46,3 +48,8 @@ The implementation should follow this sequence to ensure core logic is stable be
 11. **Async Task Bridge** — Adds background task execution via apcore's AsyncTaskManager once approval semantics are in place.
 12. **JWT Authenticator** — Secures the server for network deployments.
 13. **Explorer UI** — Provides the final development and debugging interface.
+
+### Added in 0.20.0
+
+14. **ACL Builder** — Realigns `mcp.acl` validation to PROTOCOL_SPEC §6.2.1's normative order, wraps apcore's pattern-array rejections with a rule index, and adds the tier-2 startup diagnostic. Depends on nothing else in this list; ship it before the OpenAPI Backend, whose safety guidance leans on it.
+15. **OpenAPI Backend** — Composes apcore-toolkit's scanner and HTTP proxy writer into a `Registry`. Depends on the Schema Converter, Annotation Mapper and MCP Server Factory already being stable; introduces no new execution path.

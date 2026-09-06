@@ -15,6 +15,8 @@ description: "Technical Design Document for apcore-mcp: architecture and compone
 | PRD Ref     | `docs/prd-apcore-mcp.md` v1.8                                           |
 | License     | Apache 2.0                                                               |
 
+> **v2.1 — 2026-09-05 (released as 0.20.0)**: apcore floor raised to 0.30.0 and apcore-toolkit to 0.11.1. 0.29.0 / 0.11.0 are the capability floors (ACL shape closure; `OpenAPIScanner`); 0.30.0 / 0.11.1 are forced transitively and bring `Config.project_root`, which `mcp.openapi.spec` resolves against. New [`features/acl-builder.md`](features/acl-builder.md) — the `mcp.acl` door now enforces PROTOCOL_SPEC §6.2.1's closed pattern-array shape, follows §6.2.1's normative validation order (`effect` → `approval` → `callers` → `targets`, reversing what all three bridges do today), wraps apcore's `ACLRuleError` with the rule index in the bridge's own error type, and reports tier-2 `validate_rules()` findings at startup. New [`features/openapi-backend.md`](features/openapi-backend.md) — a third backend source composing apcore-toolkit's `OpenAPIScanner` and `HTTPProxyRegistryWriter` into a `Registry`, with `mcp.openapi` on the Config Bus, seven CLI flags, and two normative governance guards (mandatory prefix in mixed deployments; a startup warning that every scanned module carries `requires_approval = false`). New Python extra `apcore-mcp[openapi]`. `mcp.openapi.spec` is the `mcp` namespace's first path-typed key and adopts apcore §9.2.2's target project-root semantics immediately, since it has no deployed population to deprecate.
+>
 > **v2.0 — 2026-05-14 (released as 0.15.0)**: rich Markdown tool descriptions (`rich_description` / `richDescription` / `MCPServerFactory::with_rich_description`) backed by apcore-toolkit 0.6+; `__apcore_module_preview` meta-tool driving `Executor.validate()` (apcore PROTOCOL_SPEC §5.6); new public `markdown` module; new `CIRCUIT_BREAKER_OPEN` error code; Rust `AsyncTaskBridge::{submit, cancel, cancel_session_tasks, handle_meta_tool, shutdown}` are now `async fn` (propagates upstream apcore 0.20+ async signatures); Rust `BindingPolicyViolation` match arm removed (apcore 0.21 dropped the variant, wire string preserved); preview handler forwards `arguments: null` verbatim to `executor.validate()` instead of coercing to `{}`. apcore-toolkit 0.6+ pinned across SDKs.
 >
 > **v1.9 — 2026-04-28 (released as 0.14.0)**: cross-language deferred-modules sync. JWT-1 `Authenticator(headers: HeaderMap)` unification; OC-5 Rust `convert_registry(&apcore::Registry)` (canonical); TM-4 Python `TransportManager.set_async_task_bridge(...)` + `transport_session_var`; AH-1 Rust per-request elicit `tokio::task_local!`; EM-3 hardcoded `userFixable` for dependency/binding/version-constraint codes; EM-6 Rust `to_mcp_error_any` generic-error fallback; MID-5 bijection-guarded denormalize variants; OC-1 TS strict-mode walker parity (apcore `to_strict_schema` semantics); EB-2 adapter-hook kwargs (`schema_converter` / `annotation_mapper` / `error_mapper`) on `serve()`/`async_serve()` in Python+TS. mcp-embedded-ui dep raised to >=0.4.0 (provides `POST /tools/{name}/validate`). EB-1 (`ExtensionManager.apply()`) and Rust EB-2 deferred to a future release.
@@ -3285,9 +3287,9 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "apcore>=0.27.0",
+    "apcore>=0.30.0",
     "mcp>=1.26,<2.0",
-    "mcp-embedded-ui>=0.4.0",
+    "mcp-embedded-ui>=0.5.0",
     "PyJWT>=2.0",
 ]
 
@@ -3298,7 +3300,17 @@ dependencies = [
 # TypeScript and Rust declare it as a hard dependency instead -- an intentional
 # per-language difference, not drift.
 markdown = [
-    "apcore-toolkit>=0.10.0",
+    "apcore-toolkit>=0.11.1",
+]
+
+# The OpenAPI Backend (F-054). `[http-proxy]` resolves httpx, which both
+# `load_spec` and `HTTPProxyRegistryWriter` need; YAML specs need nothing extra
+# because apcore already depends on pyyaml. Unlike `markdown`, absence is not a
+# graceful degradation -- there is no fallback for "serve this API" -- so the
+# entry point raises an actionable "install 'apcore-mcp[openapi]'" message
+# rather than letting an ImportError traceback escape.
+openapi = [
+    "apcore-toolkit[http-proxy]>=0.11.1",
 ]
 
 dev = [

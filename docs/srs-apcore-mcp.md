@@ -34,6 +34,9 @@ description: "IEEE 830 Software Requirements Specification for apcore-mcp: funct
 | 1.9     | 2026-04-23 | aiperceivable Engineering Team | apcore 0.19.0 + apcore-toolkit 0.5.0: Extension Bridge (F-042) and Async Task Bridge (F-043) requirements; FR-EXTMGR-001..003, FR-ASYNC-001..006 added; isinstance-based error dispatch; W3C Trace Context propagation; observability auto-wiring |
 | 2.0     | 2026-04-28 | aiperceivable Engineering Team | Cross-language deferred-modules sync (released as 0.14.0): mcp-embedded-ui 0.4.0 dependency raised + `/validate` endpoint flow-through; cross-SDK API unification (JWT-1 `Authenticator` headers-map signature, OC-5 Rust `convert_registry` Registry-trait input); Python TM-4 transport-disconnect cancellation forwarding; EM-3 hardcoded `userFixable` for dependency/binding errors; EM-6 Rust generic-error fallback; MID-5 bijection-guarded denormalize variants; OC-1 TS strict-mode walker parity; AH-1 Rust per-request elicit task-local; EB-2 adapter-hook kwargs in `serve()` (Python+TS) |
 | 2.1     | 2026-08-18 | aiperceivable Engineering Team | Cross-language spec-correctness sync against all three SDKs at 0.17.2 (released as docs 0.18.0). Corrected `handle_call` / `to_mcp_error` / `to_mcp_annotations` return types (call-result tuple and plain dicts, not MCP SDK objects); §8.1.1 / §8.1.1a now carry the complete 37- and 32-parameter `serve()` / `async_serve()` signatures and §7.8 is marked a partial constraints table; `exempt_paths` is a set defaulting to `{/health, /metrics}`; the parameter is `middleware`, not `middlewares`; FR-REDACT-001's empty-`{}` boundary condition corrected to match FR-REDACT-002 and the conformance fixture; `validate_tool` returns a projected dict, not `PreflightResult`; NFR-COMPAT-002 floor raised to apcore 0.27.0; F-045/F-046 names aligned with the PRD; §7.9 records that the `to_openai_tools` `strict` default is not uniform across languages. **Correction to revision 2.0:** its claim that EB-2 shipped adapter-hook kwargs in `serve()` for Python and TypeScript was incorrect — the hooks exist in no SDK and never have; see `features/extension-bridge.md`. |
+| 2.2     | 2026-09-05 | aiperceivable Engineering Team | apcore 0.29.0 + apcore-toolkit 0.11.0 (released as docs 0.20.0). NFR-COMPAT-002 floor raised to apcore 0.29.0 / apcore-toolkit 0.11.0, both correctness floors rather than conventions. New §3.25 FR-ACL (F-052, F-053): PROTOCOL_SPEC §6.2.1 pattern-array shape closure at the `mcp.acl` door, §6.2.1's normative validation order (all three bridges currently run it reversed), `ACLRuleError` wrapping with the rule index — in Python it is a `ModuleError`, not the `ValueError` the builder promises — and the tier-2 `validate_rules()` startup diagnostic. New §3.26 FR-OPENAPI (F-054, F-055): the OpenAPI backend source, `module_id` projection onto both protocol surfaces, scan-warning reporting, the mandatory prefix in mixed deployments, and the write-method-with-no-ACL warning that records `requires_approval = false` on every scanned module. |
+| 2.3     | 2026-09-06 | aiperceivable Engineering Team | apcore 0.30.0 + apcore-toolkit 0.11.1. NFR-COMPAT-002 floors raised to apcore 0.30.0 / apcore-toolkit 0.11.1, with the four justifications kept separate (0.29.0 correctness, 0.11.0 capability, 0.11.1 floor-only, 0.30.0 transitive + `Config.project_root`). New FR-OPENAPI-007: `mcp.openapi.spec` is the `mcp` namespace's first path-typed key, and apcore 0.30.0's §9.2.1/§9.2.2 protections do not extend to a consumer namespace — `Config.path_typed_keys()` is a hardcoded tuple and the empty-value discard is gated on it — so the bridge owns URL-verbatim, empty-discard and project-root resolution itself, adopting §9.2.2's target semantics early because the key has no deployed population. The rest of apcore 0.30.0 (binding discovery, `bindings.*` defaults, `target_id` → `target`) is out of scope; no bridge references any of it. |
+| 2.4     | 2026-09-06 | aiperceivable Engineering Team | Both conformance fixtures landed (`acl_config.json` 1.2, `openapi_backend.json` 1.0), and authoring them exposed a blocking defect in FR-OPENAPI-002 as written. apcore-toolkit's `derive_module_id` emits IDs over `[A-Za-z0-9_.-]`; apcore's registry accepts only `^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`, enforced at `Registry.register` and `Executor.call`. Only two of nine realistic operation shapes register unrepaired, and the canonical Swagger Petstore is entirely in the rejected set — verified end-to-end, yielding an empty registry. FR-OPENAPI-002 now specifies the projection (lowercase, `-` → `_`, run after `transform_module` and before `deduplicate_ids`); new FR-OPENAPI-008 specifies the loud skip for a segment that cannot be repaired without inventing a character. Also an upstream gap: `OpenAPIScanner` and `HTTPProxyRegistryWriter` are documented as an end-to-end pair that cannot serve the reference spec the scanner was verified against. |
 
 ---
 
@@ -3399,6 +3402,315 @@ mcp:
 
 ---
 
+### 3.25 FR-ACL: ACL Builder Requirements (F-052, F-053)
+
+#### FR-ACL-001: Reject a pattern array outside PROTOCOL_SPEC §6.2.1's closed shape
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-ACL-001 |
+| **Title** | `mcp.acl` refuses an operand-less, empty-string or off-index-operator pattern array |
+| **Priority** | P0 |
+| **Traces to** | F-052 |
+
+**Description:** `build_acl_from_config` shall refuse every `callers` / `targets` value outside §6.2.1's closed shape: an empty array, `["$or"]`, `["$not"]`, `["$not", p1, p2, …]`, an array containing an empty pattern string, and an array carrying `$or` or `$not` at any index other than 0. Rejection shall occur at build time, before `serve()` binds a transport. Detection of a reserved token is by string equality only — a pattern that merely begins with `$` (`$orders.*`) is an ordinary pattern and shall load.
+
+**Input/Trigger:** `mcp.acl.rules[0].targets = ["$not", "secrets.a", "secrets.b"]`.
+
+**Expected Output:** A startup error whose message begins `mcp.acl.rules[0] ` and preserves apcore's §6.2.1 reason after the prefix.
+
+**Boundary Conditions:**
+- `["$or", "a"]` — exactly one operand — is accepted. The rule is *at least* one, not at least two.
+- `["$orders.*"]` is accepted.
+- A non-list `callers` (e.g. the bare string `"admin.*"`) is a §6.1.4.1 *type* fault, not a shape fault: it is not refused at the door, and apcore classifies the rule UNEVALUABLE at `check()` time.
+
+**Error Conditions:**
+- Rejection raises the bridge's own documented type (`ValueError` / `Error` / `ConfigError`), never apcore's `ACLRuleError` raw — see FR-ACL-003.
+
+---
+
+#### FR-ACL-002: Per-rule validation follows §6.2.1's normative order
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-ACL-002 |
+| **Title** | `effect` → `approval` → `callers` → `targets`, with `default_effect` ahead of every rule |
+| **Priority** | P0 |
+| **Traces to** | F-052 |
+
+**Description:** For a rule faulty on more than one axis, `build_acl_from_config` shall report the first fault in §6.2.1's order — `effect`, then `approval`, then `callers`, then `targets` — with the rule index dominating all three, and shall judge `default_effect` ahead of the rule list entirely. The Config-Bus-only unknown-key check remains ahead of all four, having no apcore counterpart. All three bridges currently run `callers` → `targets` → `effect` → `approval`, the reverse.
+
+**Input/Trigger:** `{callers: [], targets: ["*"], effect: "Allow"}`.
+
+**Expected Output:** The rule is refused for its `effect`, not its `callers`.
+
+**Boundary Conditions:**
+- A document wrong in both `default_effect` and rule 0 is refused for the `default_effect`.
+
+**Error Conditions:** None beyond the rejection itself.
+
+---
+
+#### FR-ACL-003: An apcore rejection is re-raised with the rule index and the bridge's error type
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-ACL-003 |
+| **Title** | Wrap `ACLRuleError` rather than letting it escape |
+| **Priority** | P0 |
+| **Traces to** | F-052 |
+
+**Description:** `build_acl_from_config` shall catch `ACLRuleError` raised from `ACLRule(...)` and from the `ACL(...)` constructor and re-raise it in the bridge's own error type, prefixed `mcp.acl.rules[i] ` (rule-scoped) or `mcp.acl ` (section-scoped), preserving apcore's message verbatim after the prefix and chaining the original as the cause. apcore's own message names the type (`where="ACLRule"`), which is correct there — a rule under construction has no position — and unusable in a multi-rule YAML block. In Python, `ACLRuleError` extends `ModuleError`, not `ValueError`, so an unwrapped escape also breaks the builder's documented error type.
+
+**Input/Trigger:** Any §6.2.1 fault, or a `deny` + `approval: required` pair (§6.1.6 rule 2).
+
+**Expected Output:** `ValueError` (Python) / `Error` (TypeScript) / `ConfigError` (Rust), message prefixed with the rule index, `__cause__` / `cause` / `source` set to apcore's error.
+
+**Boundary Conditions:**
+- Rust already wraps; this requirement makes Python and TypeScript match rather than changing Rust.
+
+**Error Conditions:** None.
+
+---
+
+#### FR-ACL-004: Tier-2 never-matches findings are reported at startup
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-ACL-004 |
+| **Title** | Call `ACL.validate_rules()` after assembly and WARN on each finding |
+| **Priority** | P1 |
+| **Traces to** | F-053 |
+
+**Description:** When an ACL is attached, `serve()` / `async_serve()` shall call `validate_rules()` once the registry is fully assembled and log each finding at WARNING, naming the rule index, the field, and apcore's reason verbatim. Findings are diagnostics, never enforcement (PROTOCOL_SPEC §6.1.3): a finding shall not fail startup, and an exception raised by `validate_rules()` shall be caught, logged, and shall not abort startup — the same handling FR-SERVER's unprotected-control-surface guard applies to `governance_state()`. The call is deferred to `serve()` rather than made at build time because `validate_rules()` also reports unregistered `conditions` handler keys, and handler registration legitimately happens after discovery.
+
+**Input/Trigger:** `mcp.acl.rules[0].targets = ["$not", "*"]`.
+
+**Expected Output:** One WARNING naming rule 0 and `targets`; the server starts, and the rule decides exactly as it did before.
+
+**Boundary Conditions:**
+- No ACL attached: the call is skipped silently.
+- `targets: ["@external"]` — the caller-side sentinel used as a target pattern — is also a finding; the same value in `callers` is not.
+
+**Error Conditions:** None. Never fatal.
+
+---
+
+### 3.26 FR-OPENAPI: OpenAPI Backend Requirements (F-054, F-055)
+
+#### FR-OPENAPI-001: Build a Registry from an OpenAPI 3.0/3.1 document
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-OPENAPI-001 |
+| **Title** | `openapi_backend(spec, …)` composes the toolkit's scanner and HTTP proxy writer |
+| **Priority** | P1 |
+| **Traces to** | F-054 |
+
+**Description:** `openapi_backend` shall accept a URL, a filesystem path, or an already-parsed document and return a populated `Registry`, by calling apcore-toolkit's `load_spec` (unless handed a parsed document), `OpenAPIScanner.scan`, and `HTTPProxyRegistryWriter.write`, in that order, forwarding the scanner's `transform_operation` / `transform_module` / `derive_module_id` hooks verbatim in the toolkit's documented invocation order. The bridge shall implement no scanning, no `module_id` derivation, and no request shaping of its own; any behaviour difference between the three bridges that is not a difference in the toolkit is a defect.
+
+**Input/Trigger:** `--from-openapi https://api.example.com/openapi.json`.
+
+**Expected Output:** A `Registry` with one module per operation. Every scanned module carries `metadata.http_method` (uppercase), `metadata.url_path`, and `metadata.openapi.*` at the `ScannedModule` level; whether that survives into the registered descriptor's `metadata` (readable via `get_definition`) is Rust-only — Rust's writer builds a full `ModuleDescriptor` and preserves it, Python's and TypeScript's both drop it (upstream apcore-toolkit inconsistency; see `docs/features/openapi-backend.md` § Known cross-language divergences).
+
+**Boundary Conditions:**
+- Zero operations: WARNING logged, empty registry returned, server starts (consistent with FR-SERVER-006).
+- A string source is taken verbatim; no candidate paths are probed.
+
+**Error Conditions:**
+- Not OpenAPI 3.0.x/3.1.x, unparseable, or unreachable: fatal.
+- No `base_url` option and no absolute `servers[0].url`: fatal.
+- apcore-toolkit absent (Python only): fatal, with an actionable `install 'apcore-mcp[openapi]'` message rather than an `ImportError` traceback.
+
+---
+
+#### FR-OPENAPI-002: A derived module_id is projected, then reaches both protocol surfaces unchanged
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-OPENAPI-002 |
+| **Title** | MCP tool name verbatim; OpenAI function name dash-normalized |
+| **Priority** | P1 |
+| **Traces to** | F-054 |
+
+**Description:** A `module_id` produced by the toolkit's `derive_module_id` shall first be **projected into apcore's legal alphabet**, and only then reach MCP as the tool name verbatim, dots retained, and OpenAI as the dash-normalized form. `display.mcp.alias` continues to override the MCP name per module.
+
+The projection is required because the two alphabets differ: `derive_module_id` sanitizes to `[A-Za-z0-9_.-]`, while apcore's registry accepts only `^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$` and enforces it at `Registry.register` and again at `Executor.call`. Measured against apcore 0.30.0 and apcore-toolkit 0.11.1, only two of nine realistic operation shapes register unrepaired, and the canonical Swagger Petstore (`listPets`, `createPets`, `showPetById`) is entirely in the rejected set — scanning cleanly, failing registration on every operation as a per-module `WriteResult`, and yielding an empty registry.
+
+The projection shall be: (1) lowercase; (2) replace `-` with `_`; (3) if every dot-separated segment then matches `^[a-z][a-z0-9_]*$`, use it — otherwise skip the operation per FR-OPENAPI-008. It shall run **after** any caller-supplied `transform_module`, so that the invariant *every registered module ID is apcore-legal* holds unconditionally, and **before** the scanner's `deduplicate_ids`, because lowercasing can create a collision the document did not contain.
+
+**Input/Trigger:** `GET /users/{user_id}` with no `operationId`.
+
+**Expected Output:** `module_id` `users.user_id.get` (already legal, projection is a no-op); MCP tool `users.user_id.get`; OpenAI function `users-user_id-get`.
+
+**Boundary Conditions:**
+- `operationId: listPets` → `listpets` on both surfaces. Unprojected, apcore refuses it.
+- `GET /pet-store/items` → `pet_store.items.get`; the OpenAI form is `pet_store-items-get` — dash-normalization replaces the **dots only**, so the substituted underscore survives.
+- `listPets` and `listpets` in one document → `listpets` and `listpets_2`, the second carrying the scanner's rename warning.
+- Empty path → `root.<method>`, already legal.
+
+**Error Conditions:** None — an unprojectable ID is a skip (FR-OPENAPI-008), not an error.
+
+---
+
+#### FR-OPENAPI-003: Scan warnings and write failures reach the operator
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-OPENAPI-003 |
+| **Title** | Report every `ScannedModule.warnings` entry and every failed `WriteResult` |
+| **Priority** | P1 |
+| **Traces to** | F-054 |
+
+**Description:** Each `ScannedModule.warnings` entry shall be logged at WARNING naming the module ID, and each failed `WriteResult` at ERROR naming the module ID, without preventing the remaining modules from registering. An unresolvable or external `$ref` produces a tool with an incomplete schema, and an LLM will call it regardless — silence here is the failure mode.
+
+**Input/Trigger:** A document containing `$ref: "https://other.example.com/schemas.json#/Pet"`.
+
+**Expected Output:** WARNING naming the module and the unfetched reference; the server starts.
+
+**Boundary Conditions:**
+- A duplicate ID renamed within a single scan (`_2` suffix) carries its own warning and is reported the same way.
+- A derived ID colliding with one already in the registry is **not** an individual failure and shall never be logged-and-skipped: it is caught before any write by FR-OPENAPI-006.
+
+**Error Conditions:** None — individual schema/proxy construction failures are non-fatal. Collisions are fatal under FR-OPENAPI-006.
+
+---
+
+#### FR-OPENAPI-004: A prefix is mandatory in a mixed-source deployment
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-OPENAPI-004 |
+| **Title** | Refuse to start when an OpenAPI backend is combined with another source and no prefix is given |
+| **Priority** | P1 |
+| **Traces to** | F-055 |
+
+**Description:** `OpenAPIScanner` deduplicates IDs within one scan only; it knows nothing about modules already in the registry, and since apcore 0.22.0 a duplicate registration is rejected immediately with `InvalidInputError(code=DUPLICATE_MODULE_ID)`. When an OpenAPI backend is configured alongside any other backend source, `prefix` (the scanner's `base_path_prefix`) shall be required and the bridge shall refuse to start without it. When the OpenAPI backend is the only source, `prefix` is optional.
+
+A prefix **reduces the probability** of a collision and does not eliminate one — nothing prevents an extensions directory from already carrying a `petstore.*` module. It is a naming-hygiene requirement, not the collision defence; the defence is FR-OPENAPI-006, and the two shall both hold.
+
+**Input/Trigger:** `--extensions-dir ./extensions --from-openapi ./openapi.json` with no `--openapi-prefix`.
+
+**Expected Output:** Fatal startup error naming `--openapi-prefix` / `mcp.openapi.prefix`.
+
+**Boundary Conditions:**
+- `--from-openapi` alone: starts without a prefix.
+
+**Error Conditions:** As above.
+
+---
+
+#### FR-OPENAPI-005: Warn when write-method modules register with no ACL attached
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-OPENAPI-005 |
+| **Title** | The approval gate is silent on scanned modules; say so at startup |
+| **Priority** | P1 |
+| **Traces to** | F-055 |
+
+**Description:** apcore-toolkit infers annotations from the HTTP method alone — `GET` readonly+cacheable, `HEAD`/`OPTIONS` readonly, `PUT` idempotent, `DELETE` destructive, and `POST`/`PATCH`/`TRACE` nothing at all — and never infers `requires_approval`. Every OpenAPI-scanned module therefore arrives with `requires_approval = false`, so the approval gate fires for none of them, including a `POST` that moves money. When an OpenAPI backend registers any module whose method is in `{POST, PUT, PATCH, DELETE}`, the bridge shall emit a prominent, non-fatal startup WARNING naming the count and the three mitigations (an ACL rule carrying `approval: required`, `gate_destructive` on the `ExecutionPolicy`, or a `transform_module` hook setting the annotation), **unless** one of the three suppression conditions below holds.
+
+The warning shall report the **absence of an approval path, never the presence of protection**, following the rule apcore states on `GovernanceState.unprotected_control_surface`: *"a wired ACL that permits every call still yields `False`."* `governance_state().acl_configured` shall therefore **not** suppress it. `default_effect: allow`, an ACL whose `targets` never match the scanned modules, and an ACL that allows without carrying `approval: required` anywhere each leave every write operation ungated while satisfying "an ACL is attached".
+
+**Input/Trigger:** A document with three `POST` operations.
+
+**Expected Output:** One WARNING naming the count and the three mitigations; the server starts.
+
+**Boundary Conditions:**
+- Suppressed only when (a) no module with a method in `{POST, PUT, PATCH, DELETE}` was registered, (b) every such module declares `requires_approval` itself — reachable only via a `transform_module` hook, since the scanner never infers it, or (c) `mcp.openapi.acknowledge_unapproved_writes: true` records an explicit operator decision.
+- An ACL is attached and at least one rule carries `approval: required`: the message is downgraded in wording (an approval path exists; whether its `targets` cover these modules is a match-relation question) but still emitted. Whether a rule matches is exactly the predicate FR-ACL-004's tier 2 declines to close, and a predicate that cannot be closed shall not silence a safety warning.
+- `governance_state().builtin_approval_gate_wired` is `false` (the `internal`, `testing` and `minimal` strategies remove the gate): the message is escalated, because neither a module-level `requires_approval` nor an ACL rule's `approval: required` can fire.
+- A read-only document (`GET` / `HEAD` / `OPTIONS` only): no warning.
+
+**Error Conditions:** None. Never fatal.
+
+
+#### FR-OPENAPI-006: Module-ID collisions are caught by a pre-write preflight and are fatal
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-OPENAPI-006 |
+| **Title** | Intersect the full derived-ID set against the registry before the first write; fail atomically |
+| **Priority** | P0 |
+| **Traces to** | F-055 |
+
+**Description:** After the scan and **before** `HTTPProxyRegistryWriter.write` is called, the bridge shall intersect the complete set of derived module IDs against the IDs already present in the target registry and, on a non-empty intersection, fail startup naming **every** colliding ID — not the first — having written nothing. apcore-toolkit's writers report per-module outcomes as `WriteResult`s and do not raise, so without this preflight a duplicate registration would surface as one failed `WriteResult`, be logged at ERROR under FR-OPENAPI-003, and leave the server running with a **partial registry**: a tool advertised by the document, absent from `tools/list`, with the operator told only by one log line. The escalation from per-module report to fatal is the bridge's decision to make, not the writer's.
+
+The set of derived IDs is fully known at this point and the check is a set intersection, so atomicity costs nothing. Within-document duplicates never reach this check — the scanner already renames them `_2`, `_3`, … with a warning.
+
+**Input/Trigger:** `--extensions-dir ./extensions --from-openapi ./openapi.json --openapi-prefix petstore`, where the extensions directory already registers `petstore.pets.get`.
+
+**Expected Output:** Fatal startup error naming `petstore.pets.get` and every other colliding ID. No module from the OpenAPI document is registered.
+
+**Boundary Conditions:**
+- Two colliding IDs: both are named in one message. An implementation that reports only the first forces the operator through one restart per collision.
+- Empty intersection: no error, and the writer proceeds normally.
+- Single-source deployment: the check still runs — the target registry may be non-empty for other reasons — and is simply expected to find nothing.
+
+**Error Conditions:**
+- `ValueError` (Python) / `Error` (TypeScript) / `ConfigError` (Rust). Fatal; the server does not start.
+
+---
+
+#### FR-OPENAPI-007: `mcp.openapi.spec` is path-typed and the bridge owns its handling
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-OPENAPI-007 |
+| **Title** | URL verbatim; relative path against `project_root`; empty value discarded |
+| **Priority** | P1 |
+| **Traces to** | F-054 |
+
+**Description:** `mcp.openapi.spec` is the `mcp` namespace's first path-typed configuration key. apcore 0.30.0 declared the closed path-typed key set (PROTOCOL_SPEC §9.2.1) and the project-root resolution base (§9.2.2), but neither reaches a consumer namespace: `Config.path_typed_keys()` returns a hardcoded tuple of apcore's own keys and does not consult a namespace registered through `Config.register_namespace`, and the §9.2.1 requirement-5 empty-value discard is gated on that same fixed set. The bridge shall therefore implement three rules itself:
+
+1. A value beginning `http://` or `https://` is a URL, used verbatim — never path-resolved and never made absolute. The discriminator is the scheme prefix, not an inference from the string's shape.
+2. A set-but-empty value — from `APCORE_MCP_OPENAPI_SPEC=` or from `spec: ""` — shall be discarded with a WARNING, and resolution shall fall through to the next configuration tier. It shall never be joined to a base, which is what silently yields the working directory.
+3. A relative filesystem path shall resolve against `Config.project_root` (apcore 0.30.0), not the process CWD and not the OpenAPI document's own directory.
+
+Rule 3 adopts §9.2.2's **target** semantics rather than the 1.x semantics apcore's own four keys keep. §9.2.2 forbids early adoption for those keys because they have deployed configurations relying on today's bases and §13.2's two-minor deprecation window applies; `mcp.openapi.spec` has never shipped, so its deployed population is empty and there is nothing to deprecate. The documented consequence: for the whole apcore 1.x line, under §9.14 discovery tier 1 with a configuration file outside CWD, `mcp.openapi.spec` and `acl.root` resolve relative values against different bases. Under tiers 2-5 they coincide.
+
+**Input/Trigger:** `APCORE_MCP_OPENAPI_SPEC=` exported over a config file declaring `spec: ./openapi.json`.
+
+**Expected Output:** WARNING that the variable is set but empty and is being ignored; the file-tier value `./openapi.json` is used, resolved against `Config.project_root`.
+
+**Boundary Conditions:**
+- `spec: "https://api.example.com/openapi.json"` — used verbatim; no resolution of any kind.
+- An absolute filesystem path — used verbatim; `project_root` is not consulted.
+- Tiers 2-5, where `project_root` equals CWD: rule 3 is observationally identical to CWD resolution.
+
+**Error Conditions:**
+- All tiers empty or absent after the discard: the ordinary "no `spec` configured" fatal error from FR-OPENAPI-001, not a path error.
+
+---
+
+#### FR-OPENAPI-008: An unprojectable module ID skips the operation loudly
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-OPENAPI-008 |
+| **Title** | Skip, warn, and keep serving the rest |
+| **Priority** | P1 |
+| **Traces to** | F-054 |
+
+**Description:** When a derived module ID still fails apcore's pattern after FR-OPENAPI-002's projection — a dot-segment not beginning with a lowercase letter, such as `v1.2fa.post` from `POST /v1/2fa` — the bridge shall skip that operation and emit a WARNING naming the derived ID and the offending segment. The remaining operations shall still register.
+
+Skipping rather than repairing: completing such a segment means **inventing** a character, which is a naming decision the bridge must not make silently, and the operator already has `derive_module_id` and `transform_module` to make it explicitly. Skipping rather than failing: one unnameable operation shall not cost the whole server.
+
+The warning is the bridge's own. A `transform_module` hook returning null drops the module **silently** — the scanner records nothing — so an implementation that merely drops it satisfies every other assertion about the resulting module set and must be caught here.
+
+**Input/Trigger:** A document carrying `POST /v1/2fa` and `GET /pets` (`operationId: listPets`).
+
+**Expected Output:** One WARNING naming `v1.2fa.post` and the segment `2fa`; `listpets` registers and is served.
+
+**Boundary Conditions:**
+- Every operation unprojectable: the zero-module WARNING of FR-OPENAPI-001 also fires, and the server still starts.
+- A caller-supplied `derive_module_id` or `transform_module` that yields a legal ID: no skip, no warning.
+
+**Error Conditions:** None. Never fatal.
+
+---
+
 ## 4. Specific Requirements -- Non-Functional Requirements
 
 ### 4.1 NFR-PERF: Performance Requirements
@@ -3664,12 +3976,16 @@ mcp:
 | Field | Value |
 |-------|-------|
 | **ID** | NFR-COMPAT-002 |
-| **Title** | Compatible with apcore-python >= 0.27.0 |
-| **Target** | apcore >= 0.27.0 |
+| **Title** | Compatible with apcore-python >= 0.30.0 |
+| **Target** | apcore >= 0.30.0, apcore-toolkit >= 0.11.1 |
 | **Measurement** | Integration tests against latest apcore-python release |
 | **Traces to** | PRD Section 8.3 |
 
-**Description:** apcore-mcp shall declare a dependency on `apcore>=0.27.0` and shall be tested against the latest release. All three SDKs pin the same floor at 0.17.2 — `apcore>=0.27.0` (Python), `apcore-js>=0.27.0` (TypeScript), `apcore = "0.27"` (Rust) — alongside `apcore-toolkit>=0.10.0` and `mcp-embedded-ui>=0.4.0`. Note the upper bound was dropped: pin `<1.0` only if a breaking 1.0 is announced. Version **0.19.0** was the floor that first made the current feature set buildable — the AsyncTaskManager primitives (F-043 Async Task Bridge), W3C TraceContext propagation (FR-EXTMGR / FR-OBSERVABILITY chains), the 12-field ModuleAnnotations dataclass (annotation passthrough — F-041), and the dependency/binding error classes consumed by EM-3 USER_FIXABLE error dispatch. Prior features carried forward: Pipeline v2 delegation (`PipelineEngine.run()`), call-chain guard rename (`safety_check` → `call_chain_guard`), corrected step order (middleware before input validation), Step metadata fields, YAML pipeline configuration, sensitive field redaction utility, Config Bus namespace registration (§9.4), Error Formatter Registry (§8.8), dot-namespaced event types (§9.16), Context `ContextKey[T]`, ACL condition handlers, and `Annotations.extra`.
+**Description:** apcore-mcp shall declare a dependency on `apcore>=0.30.0` and shall be tested against the latest release. All three SDKs pin the same floor at 0.20.0 — `apcore>=0.30.0` (Python), `apcore-js>=0.30.0` (TypeScript), `apcore = ">=0.30"` (Rust) — alongside `apcore-toolkit>=0.11.1` and `mcp-embedded-ui>=0.5.0`.
+
+The floors have four distinct justifications and shall not be collapsed into one. **apcore 0.29.0 is the correctness floor:** it closes the shape of an ACL `callers` / `targets` array at every entry point (PROTOCOL_SPEC §6.2.1), and on 0.28.0 the shapes it rejects load silently and leave the rule inert — a `deny` rule under `default_effect: allow` permits the call it names. **apcore-toolkit 0.11.0 is the capability floor:** `OpenAPIScanner` does not exist below it, and it is where the Rust `HTTPProxyRegistryWriter` stopped rejecting `HEAD` / `OPTIONS` / `TRACE` before any network call. **apcore-toolkit 0.11.1 changes no toolkit API**; it exists to raise its own apcore floor. **apcore 0.30.0 is therefore forced transitively**, and is independently required by FR-OPENAPI-007, which resolves `mcp.openapi.spec` against `Config.project_root` — an accessor 0.30.0 introduces.
+
+apcore 0.30.0 is otherwise out of scope for this bridge: its §5.12.6 binding-discovery contract, `bindings.dir` / `bindings.pattern` defaults, `target_id` → `target` binding-field repair and regenerated `config_key_governance.json` all concern apcore's `Config` / `BindingLoader` layer, and no bridge references `extensions.root`, `acl.root`, `schema.root`, `bindings.dir`, `bindings.pattern`, apcore's `BindingLoader`, or `project_root` today. Its §9.2.2 path-resolution change is a deprecation phase that keeps 1.x semantics exactly. In Python apcore-toolkit remains an extra rather than a runtime dependency — `apcore-mcp[markdown]` for rich descriptions and `apcore-mcp[openapi]` (which resolves `apcore-toolkit[http-proxy]`) for the OpenAPI Backend; TypeScript and Rust depend on it unconditionally. Note the upper bound was dropped: pin `<1.0` only if a breaking 1.0 is announced. Version **0.19.0** was the floor that first made the current feature set buildable — the AsyncTaskManager primitives (F-043 Async Task Bridge), W3C TraceContext propagation (FR-EXTMGR / FR-OBSERVABILITY chains), the 12-field ModuleAnnotations dataclass (annotation passthrough — F-041), and the dependency/binding error classes consumed by EM-3 USER_FIXABLE error dispatch. Prior features carried forward: Pipeline v2 delegation (`PipelineEngine.run()`), call-chain guard rename (`safety_check` → `call_chain_guard`), corrected step order (middleware before input validation), Step metadata fields, YAML pipeline configuration, sensitive field redaction utility, Config Bus namespace registration (§9.4), Error Formatter Registry (§8.8), dot-namespaced event types (§9.16), Context `ContextKey[T]`, ACL condition handlers, and `Annotations.extra`.
 
 ---
 
@@ -4493,6 +4809,10 @@ MCP_ELICIT_KEY: str = "_mcp_elicit"
 | F-044 | Bidirectional Cancellation | FR-CANCEL-001, FR-CANCEL-002, FR-CANCEL-003, FR-CANCEL-004 | -- | -- |
 | F-045 | Decorator Metadata Mapping | §10.3 (SHALL statements; no numbered FR) | -- | -- |
 | F-046 | Custom Middleware Injection | §10.3 (SHALL statements; no numbered FR) | -- | -- |
+| F-052 | `mcp.acl` Pattern-Array Shape Closure | FR-ACL-001, FR-ACL-002, FR-ACL-003 | NFR-COMPAT-002, NFR-SEC-001 | -- |
+| F-053 | ACL Tier-2 Startup Diagnostic | FR-ACL-004 | NFR-COMPAT-002 | -- |
+| F-054 | OpenAPI Backend | FR-OPENAPI-001, FR-OPENAPI-002, FR-OPENAPI-003, FR-OPENAPI-007, FR-OPENAPI-008 | NFR-COMPAT-002 | UC-001, UC-006 |
+| F-055 | OpenAPI Governance Guards | FR-OPENAPI-004, FR-OPENAPI-005, FR-OPENAPI-006 | NFR-SEC-001 | -- |
 
 ### 9.2 FR to PRD Feature Reverse Traceability
 

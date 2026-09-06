@@ -1,0 +1,601 @@
+{
+  "description": "Cross-language conformance for the OpenAPI Backend (`openapi_backend(spec, **options)` -> Registry). Pins ONLY what apcore-mcp adds on top of apcore-toolkit's own 24-case `openapi_scan.json` corpus: the projection of a scanner-derived module ID onto an apcore-legal module ID and then onto the two protocol surfaces, the HTTP-method -> ToolAnnotations mapping as it reaches MCP, the path-typed handling of the `spec` configuration value, and the fatal configuration errors. The scanner's own derivation, the `metadata.openapi.*` sub-object, and the proxy's request shaping belong to apcore-toolkit's corpus and are deliberately NOT asserted here. Three sections, each with its own shape: `test_cases` (document -> modules), `config_cases` (how the `spec` value resolves), `error_cases` (fatal configurations).",
+  "contract_version": "1.0",
+  "entry_point": "openapi_backend(spec, **options) -> Registry; names then read through MCPServerFactory.build_tool and OpenAIConverter.convert_descriptor",
+  "spec": "features/openapi-backend.md#conformance",
+  "shared": {
+    "base_document": {
+      "openapi": "3.0.3",
+      "info": {
+        "title": "Petstore",
+        "version": "1.0.0"
+      },
+      "servers": [
+        {
+          "url": "https://api.example.com"
+        }
+      ]
+    },
+    "ok_response": {
+      "responses": {
+        "200": {
+          "description": "ok"
+        }
+      }
+    },
+    "note": "`base_document` and `ok_response` are spelled out in each case's `document` rather than referenced, so a driver never has to merge fragments. They are listed here only to make the shared shape legible."
+  },
+  "test_cases": [
+    {
+      "id": "operation_id_projected_to_apcore_id",
+      "description": "A camelCase `operationId` -- the dominant OpenAPI convention, and what the canonical Swagger Petstore uses -- is projected to lowercase. Without the projection the scanner emits `listPets`, which apcore's registry REFUSES (`^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$`, INVALID_MODULE_ID), so the module never registers and the server serves nothing. This case is the reason the projection exists.",
+      "document": {
+        "openapi": "3.0.3",
+        "info": {
+          "title": "Petstore",
+          "version": "1.0.0"
+        },
+        "servers": [
+          {
+            "url": "https://api.example.com"
+          }
+        ],
+        "paths": {
+          "/pets": {
+            "get": {
+              "operationId": "listPets",
+              "responses": {
+                "200": {
+                  "description": "ok"
+                }
+              }
+            }
+          }
+        }
+      },
+      "options": {},
+      "expected_modules": [
+        {
+          "module_id": "listpets",
+          "mcp_tool_name": "listpets",
+          "openai_function_name": "listpets"
+        }
+      ],
+      "expected_skipped": []
+    },
+    {
+      "id": "path_derived_id_dash_normalized_for_openai",
+      "description": "A path-derived ID is already apcore-legal and passes through the projection unchanged; the MCP tool name keeps its dots verbatim and the OpenAI function name replaces them with dashes. Underscores are untouched on both surfaces.",
+      "document": {
+        "openapi": "3.0.3",
+        "info": {
+          "title": "Petstore",
+          "version": "1.0.0"
+        },
+        "servers": [
+          {
+            "url": "https://api.example.com"
+          }
+        ],
+        "paths": {
+          "/users/{user_id}": {
+            "get": {
+              "responses": {
+                "200": {
+                  "description": "ok"
+                }
+              }
+            }
+          }
+        }
+      },
+      "options": {},
+      "expected_modules": [
+        {
+          "module_id": "users.user_id.get",
+          "mcp_tool_name": "users.user_id.get",
+          "openai_function_name": "users-user_id-get"
+        }
+      ],
+      "expected_skipped": []
+    },
+    {
+      "id": "hyphen_projected_to_underscore",
+      "description": "apcore's module-ID pattern admits no hyphen ('lowercase, digits, underscores, dots only; no hyphens'), while the scanner's sanitizer preserves one. A hyphenated PATH SEGMENT is therefore projected to an underscore -- a lossless repair, unlike inventing a character. The OpenAI surface then dash-normalizes only the DOTS, leaving the substituted underscore in place, which is what distinguishes this case from a naive 'replace every separator' implementation.",
+      "document": {
+        "openapi": "3.0.3",
+        "info": {
+          "title": "Petstore",
+          "version": "1.0.0"
+        },
+        "servers": [
+          {
+            "url": "https://api.example.com"
+          }
+        ],
+        "paths": {
+          "/pet-store/items": {
+            "get": {
+              "responses": {
+                "200": {
+                  "description": "ok"
+                }
+              }
+            }
+          }
+        }
+      },
+      "options": {},
+      "expected_modules": [
+        {
+          "module_id": "pet_store.items.get",
+          "mcp_tool_name": "pet_store.items.get",
+          "openai_function_name": "pet_store-items-get"
+        }
+      ],
+      "expected_skipped": []
+    },
+    {
+      "id": "unprojectable_segment_skipped_with_warning",
+      "description": "A dot-segment that does not begin with a lowercase letter after projection -- here `2fa` -- cannot be repaired without INVENTING a character, which is a naming decision the bridge must not make silently. The operation is skipped with a WARNING naming the derived ID and the offending segment, and the rest of the document still registers. Skipping rather than failing: one unnameable operation must not cost the whole server. The scanner itself records nothing here (a `transform_module` returning null drops the module silently), so the warning is the BRIDGE's to emit -- an implementation that merely drops the module passes every other assertion in this fixture and fails this one.",
+      "document": {
+        "openapi": "3.0.3",
+        "info": {
+          "title": "Petstore",
+          "version": "1.0.0"
+        },
+        "servers": [
+          {
+            "url": "https://api.example.com"
+          }
+        ],
+        "paths": {
+          "/v1/2fa": {
+            "post": {
+              "responses": {
+                "200": {
+                  "description": "ok"
+                }
+              }
+            }
+          },
+          "/pets": {
+            "get": {
+              "operationId": "listPets",
+              "responses": {
+                "200": {
+                  "description": "ok"
+                }
+              }
+            }
+          }
+        }
+      },
+      "options": {},
+      "expected_modules": [
+        {
+          "module_id": "listpets",
+          "mcp_tool_name": "listpets",
+          "openai_function_name": "listpets"
+        }
+      ],
+      "expected_skipped": [
+        {
+          "derived_module_id": "v1.2fa.post",
+          "reason_substring": "2fa"
+        }
+      ]
+    },
+    {
+      "id": "projection_collision_deduplicated",
+      "description": "Lowercasing can MAKE a collision that did not exist in the document: `listPets` and `listpets` are distinct operationIds and project to the same ID. The projection therefore runs BEFORE the scanner's `deduplicate_ids`, which resolves the pair by suffix and records the rename on the second module. An implementation that projects after dedup produces two modules with the same ID and fails registration on the second.",
+      "document": {
+        "openapi": "3.0.3",
+        "info": {
+          "title": "Petstore",
+          "version": "1.0.0"
+        },
+        "servers": [
+          {
+            "url": "https://api.example.com"
+          }
+        ],
+        "paths": {
+          "/a": {
+            "get": {
+              "operationId": "listPets",
+              "responses": {
+                "200": {
+                  "description": "ok"
+                }
+              }
+            }
+          },
+          "/b": {
+            "get": {
+              "operationId": "listpets",
+              "responses": {
+                "200": {
+                  "description": "ok"
+                }
+              }
+            }
+          }
+        }
+      },
+      "options": {},
+      "expected_modules": [
+        {
+          "module_id": "listpets",
+          "mcp_tool_name": "listpets",
+          "openai_function_name": "listpets"
+        },
+        {
+          "module_id": "listpets_2",
+          "mcp_tool_name": "listpets_2",
+          "openai_function_name": "listpets_2",
+          "warnings_contain": "renamed"
+        }
+      ],
+      "expected_skipped": []
+    },
+    {
+      "id": "prefix_applied_to_every_id",
+      "description": "`prefix` is prepended to every derived ID before the projection, so a prefix carrying uppercase or a hyphen is normalized along with the rest. Both protocol surfaces carry it.",
+      "document": {
+        "openapi": "3.0.3",
+        "info": {
+          "title": "Petstore",
+          "version": "1.0.0"
+        },
+        "servers": [
+          {
+            "url": "https://api.example.com"
+          }
+        ],
+        "paths": {
+          "/pets": {
+            "get": {
+              "operationId": "listPets",
+              "responses": {
+                "200": {
+                  "description": "ok"
+                }
+              }
+            }
+          },
+          "/users/{user_id}": {
+            "get": {
+              "responses": {
+                "200": {
+                  "description": "ok"
+                }
+              }
+            }
+          }
+        }
+      },
+      "options": {
+        "prefix": "petstore"
+      },
+      "expected_modules": [
+        {
+          "module_id": "petstore.listpets",
+          "mcp_tool_name": "petstore.listpets",
+          "openai_function_name": "petstore-listpets"
+        },
+        {
+          "module_id": "petstore.users.user_id.get",
+          "mcp_tool_name": "petstore.users.user_id.get",
+          "openai_function_name": "petstore-users-user_id-get"
+        }
+      ],
+      "expected_skipped": []
+    },
+    {
+      "id": "get_maps_to_readonly_hint",
+      "description": "GET -> readonly + cacheable in apcore annotations -> readOnlyHint true at the MCP surface. openWorldHint is true because ModuleAnnotations.open_world defaults to true and an HTTP proxy genuinely does reach an external system -- correct without anyone setting it.",
+      "document": {
+        "openapi": "3.0.3",
+        "info": {
+          "title": "Petstore",
+          "version": "1.0.0"
+        },
+        "servers": [
+          {
+            "url": "https://api.example.com"
+          }
+        ],
+        "paths": {
+          "/pets": {
+            "get": {
+              "operationId": "listPets",
+              "responses": {
+                "200": {
+                  "description": "ok"
+                }
+              }
+            }
+          }
+        }
+      },
+      "options": {},
+      "expected_modules": [
+        {
+          "module_id": "listpets",
+          "mcp_annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false,
+            "idempotentHint": false,
+            "openWorldHint": true
+          },
+          "requires_approval": false
+        }
+      ],
+      "expected_skipped": []
+    },
+    {
+      "id": "delete_maps_to_destructive_hint",
+      "description": "DELETE -> destructive -> destructiveHint true. The only method the toolkit marks destructive, and therefore the only one `gate_destructive` on an ExecutionPolicy can reach.",
+      "document": {
+        "openapi": "3.0.3",
+        "info": {
+          "title": "Petstore",
+          "version": "1.0.0"
+        },
+        "servers": [
+          {
+            "url": "https://api.example.com"
+          }
+        ],
+        "paths": {
+          "/pets/{pet_id}": {
+            "delete": {
+              "operationId": "deletePet",
+              "responses": {
+                "200": {
+                  "description": "ok"
+                }
+              }
+            }
+          }
+        }
+      },
+      "options": {},
+      "expected_modules": [
+        {
+          "module_id": "deletepet",
+          "mcp_annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": true,
+            "idempotentHint": false,
+            "openWorldHint": true
+          },
+          "requires_approval": false
+        }
+      ],
+      "expected_skipped": []
+    },
+    {
+      "id": "post_carries_no_behavioral_hint",
+      "description": "POST carries NO behavioral hint and `requires_approval` is false, so a `POST /charges` that moves money is annotated exactly like a `POST /echo` and the approval gate fires for neither. This case pins the gap as a FACT, not as a defect to be fixed here: the scanner cannot know which operations are consequential and declines to guess. It exists so the gap cannot be closed accidentally in one language only -- an SDK that starts inferring `destructive` or `requires_approval` from POST fails here and has to justify it as a spec change. The mitigations are ACL `approval: required`, `gate_destructive`, or a `transform_module` hook; see FR-OPENAPI-005 for the startup warning that makes the gap audible.",
+      "document": {
+        "openapi": "3.0.3",
+        "info": {
+          "title": "Petstore",
+          "version": "1.0.0"
+        },
+        "servers": [
+          {
+            "url": "https://api.example.com"
+          }
+        ],
+        "paths": {
+          "/pets": {
+            "post": {
+              "operationId": "createPets",
+              "responses": {
+                "200": {
+                  "description": "ok"
+                }
+              }
+            }
+          }
+        }
+      },
+      "options": {},
+      "expected_modules": [
+        {
+          "module_id": "createpets",
+          "mcp_annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false,
+            "idempotentHint": false,
+            "openWorldHint": true
+          },
+          "requires_approval": false
+        }
+      ],
+      "expected_skipped": []
+    }
+  ],
+  "config_cases": [
+    {
+      "id": "spec_url_not_path_resolved",
+      "description": "An `http(s)://` value is a URL and is used VERBATIM -- never joined to a base, never made absolute. The discriminator is the scheme prefix, not an inference from the string's shape.",
+      "spec_value": "https://api.example.com/openapi.json",
+      "project_root": "/srv/project",
+      "cwd": "/tmp/elsewhere",
+      "expected_resolved_spec": "https://api.example.com/openapi.json"
+    },
+    {
+      "id": "relative_spec_resolves_against_project_root",
+      "description": "A relative filesystem path resolves against `Config.project_root` (apcore 0.30.0, PROTOCOL_SPEC 9.2.2 target semantics), NOT the process CWD. The two differ only under 9.14 discovery tier 1 with a configuration file outside CWD, which is exactly what this case sets up -- under tiers 2-5 they coincide and the case would assert nothing.",
+      "spec_value": "./openapi.json",
+      "project_root": "/srv/project",
+      "cwd": "/tmp/elsewhere",
+      "expected_resolved_spec": "/srv/project/openapi.json"
+    },
+    {
+      "id": "empty_spec_value_discarded",
+      "description": "A set-but-empty value -- from `APCORE_MCP_OPENAPI_SPEC=` or from `spec: \"\"` -- MUST be discarded with a WARNING so resolution falls through to the next tier, mirroring PROTOCOL_SPEC 9.2.1 requirement 5. It MUST NOT be joined to a base, which silently yields the project root itself. apcore's own protection does not cover this: `Config.path_typed_keys()` is a hardcoded tuple of apcore's four keys and never consults a namespace registered through `Config.register_namespace`, and the empty-value discard is gated on that same set -- so `mcp.openapi.spec` gets none of it and the bridge owns the rule.",
+      "spec_value": "",
+      "spec_value_next_tier": "./openapi.json",
+      "project_root": "/srv/project",
+      "cwd": "/srv/project",
+      "expected_resolved_spec": "/srv/project/openapi.json",
+      "expected_warning_substring": "empty"
+    }
+  ],
+  "error_cases": [
+    {
+      "id": "swagger_2_rejected",
+      "description": "Swagger 2.0 is out of scope for V1. The refusal originates in apcore-toolkit's scanner; only the fragment naming the supported versions is pinned here, never the toolkit's full sentence.",
+      "document": {
+        "swagger": "2.0",
+        "info": {
+          "title": "Old",
+          "version": "1.0.0"
+        },
+        "paths": {}
+      },
+      "options": {},
+      "expected_error_substrings": [
+        "3.0"
+      ]
+    },
+    {
+      "id": "no_base_url_anywhere_rejected",
+      "description": "No `base_url` option and no usable absolute `servers[0].url`: fatal, because every proxied call would otherwise resolve against an unknown host. A relative or templated-without-defaults server URL counts as absent.",
+      "document": {
+        "openapi": "3.0.3",
+        "info": {
+          "title": "Petstore",
+          "version": "1.0.0"
+        },
+        "paths": {
+          "/pets": {
+            "get": {
+              "operationId": "listPets",
+              "responses": {
+                "200": {
+                  "description": "ok"
+                }
+              }
+            }
+          }
+        }
+      },
+      "options": {},
+      "expected_error_substrings": [
+        "base_url"
+      ]
+    },
+    {
+      "id": "missing_prefix_in_mixed_deployment_rejected",
+      "description": "Two backend sources and no `prefix`: fatal before any scan. A prefix is naming hygiene, required so the two ID spaces cannot casually collide; it is NOT the collision defence, which is the preflight below.",
+      "document": {
+        "openapi": "3.0.3",
+        "info": {
+          "title": "Petstore",
+          "version": "1.0.0"
+        },
+        "servers": [
+          {
+            "url": "https://api.example.com"
+          }
+        ],
+        "paths": {
+          "/pets": {
+            "get": {
+              "operationId": "listPets",
+              "responses": {
+                "200": {
+                  "description": "ok"
+                }
+              }
+            }
+          }
+        }
+      },
+      "options": {
+        "additional_backend_source": true
+      },
+      "expected_error_substrings": [
+        "prefix"
+      ]
+    },
+    {
+      "id": "id_collision_against_registry_rejected",
+      "description": "A derived ID already present in the target registry fails the PRE-WRITE preflight: nothing is written, and EVERY colliding ID is named, not the first. Without the preflight a duplicate reaches apcore's registry as a failed WriteResult rather than an exception -- the toolkit's writers report per-module outcomes by contract -- and would be logged-and-skipped under FR-OPENAPI-003, leaving a partial registry: a tool the document advertises, absent from tools/list, with one log line as the only notice. Two collisions are seeded deliberately: an implementation that reports only the first forces one restart per collision.",
+      "document": {
+        "openapi": "3.0.3",
+        "info": {
+          "title": "Petstore",
+          "version": "1.0.0"
+        },
+        "servers": [
+          {
+            "url": "https://api.example.com"
+          }
+        ],
+        "paths": {
+          "/pets": {
+            "get": {
+              "operationId": "listPets",
+              "responses": {
+                "200": {
+                  "description": "ok"
+                }
+              }
+            }
+          },
+          "/orders": {
+            "get": {
+              "operationId": "listOrders",
+              "responses": {
+                "200": {
+                  "description": "ok"
+                }
+              }
+            }
+          }
+        }
+      },
+      "options": {
+        "prefix": "petstore"
+      },
+      "preexisting_registry_module_ids": [
+        "petstore.listpets",
+        "petstore.listorders"
+      ],
+      "expected_error_substrings": [
+        "petstore.listpets",
+        "petstore.listorders"
+      ],
+      "expected_registry_module_ids_after": [
+        "petstore.listpets",
+        "petstore.listorders"
+      ]
+    }
+  ],
+  "notes": {
+    "module_id_projection": [
+      "The projection is: lowercase, then replace `-` with `_`. If every dot-separated segment then matches `^[a-z][a-z0-9_]*$` the ID is used; otherwise the operation is skipped with a warning.",
+      "It exists because apcore-toolkit's `derive_module_id` emits IDs over `[A-Za-z0-9_.-]` while apcore's registry accepts only `^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$`. Measured against apcore 0.30.0 and apcore-toolkit 0.11.1: of nine realistic operation shapes, only two are registrable without projection. The canonical Swagger Petstore (`listPets`, `createPets`, `showPetById`) is entirely in the rejected set -- it scans cleanly, fails registration on every operation as a per-module WriteResult, and yields an EMPTY registry.",
+      "This is an upstream contract gap as much as a bridge concern: `OpenAPIScanner` and `HTTPProxyRegistryWriter` are documented as an end-to-end pair, and the pair cannot serve the reference specification the scanner was verified against -- that verification asserted byte-identical ScannedModule output across SDKs, which never exercised registrability. The projection belongs in apcore-toolkit long-term. It lives here now because the bridge cannot ship a backend that serves nothing, and because moving it upstream is a breaking change to a byte-identical corpus that shipped one release ago.",
+      "The projection runs LAST, after any caller-supplied `transform_module`, so the invariant 'every registered module ID is apcore-legal' holds unconditionally. A caller hook that already produces a legal ID sees the projection as a no-op."
+    ],
+    "known_divergences": [
+      "`loadSpec` is async in TypeScript and synchronous in Python and Rust, so `openapiBackend` returns a Promise there. Drivers must await accordingly; no case asserts synchrony.",
+      "Rust's spec loader has a two-function surface (`load_spec` / `load_spec_with_options`); Python and TypeScript take keyword options on one function. `config_cases` assert the RESOLVED spec location, never which function produced it.",
+      "apcore-toolkit is a Python extra (`apcore-mcp[openapi]`) and an unconditional dependency in TypeScript and Rust, so only Python has a 'toolkit absent' path. It is out of scope for this fixture and covered per-language."
+    ],
+    "deliberately_not_pinned": [
+      "The scanner's own `module_id` derivation, input/output schema extraction, and the `metadata.openapi.*` sub-object -- apcore-toolkit's `openapi_scan.json` owns those, and pinning them here would pin another repository's contract.",
+      "The proxy's request shaping (body-vs-query partitioning, path-parameter percent-encoding) -- apcore-toolkit's `output-writers.md` owns it.",
+      "The exact wording of any error originating in apcore or apcore-toolkit. `expected_error_substrings` carries only stable fragments the bridge itself contributes or that name a value from the input."
+    ],
+    "upstream_gap_metadata_not_registered": "`ScannedModule.metadata` -- including the normative `http_method` / `url_path` execution keys -- reaches the registered module's descriptor in Rust and NOT in Python or TypeScript. Measured directly against all three toolkit writers: `apcore-toolkit-rust`'s `HTTPProxyRegistryWriter::write` (http_proxy_writer.rs:123-137) builds a full `ModuleDescriptor` including `metadata: module.metadata.clone()` and passes it to `Registry::register(name, module, descriptor)` -- Rust's `get_definition()` DOES carry `http_method`/`url_path`/`openapi.*`. Python's writer calls the 2-arg `registry.register(mod.module_id, module_instance)`, with no `metadata=` argument even though apcore's `Registry.register` accepts one; TypeScript's writer calls the 2-arg `registry.register(mod.moduleId, fm)` too -- the constructed `fm` DOES carry a `metadata` property, but apcore-js's `Registry.register` never reads `.metadata` off the module instance, only its own explicit (unused) 4th parameter. In both languages the proxy still routes correctly -- it closes over the values -- but they are invisible to `get_definition`, and therefore to the MCP `_meta` projection. An earlier version of this note stated the gap as universal across all three languages, which was wrong for Rust; it was corrected after direct verification rather than left as an assumption carried over from the Python-only session that first found it. These cases assert names and annotations only, deliberately not per-language-conditional, so the fixture stays language-neutral; the metadata keys stay pinned by apcore-toolkit's own corpus at the ScannedModule level, which is the last place all three currently agree on it being observable. Reported alongside the module-ID alphabet gap."
+  }
+}

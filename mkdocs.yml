@@ -72,6 +72,9 @@ nav:
       - Async Task Bridge: features/async-task-bridge.md
       - Explorer UI: features/explorer-ui.md
       - Markdown: features/markdown.md
+      - System Management Extension: features/system-management-extension.md
+      - ACL Builder: features/acl-builder.md
+      - OpenAPI Backend: features/openapi-backend.md
   - Specifications:
       - Product Requirements: prd-apcore-mcp.md
       - Software Requirements: srs-apcore-mcp.md

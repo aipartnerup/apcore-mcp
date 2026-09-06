@@ -1300,6 +1300,83 @@ extra as its own `\n\n`-separated paragraph while Python joins them with `\n`.
 
 ---
 
+### F-052: `mcp.acl` Pattern-Array Shape Closure (v0.20+)
+
+**Title:** Reject a `callers` / `targets` array outside PROTOCOL_SPEC §6.2.1's closed shape, in §6.2.1's order, naming the rule.
+
+**Description:** apcore 0.29.0 closes the shape of an ACL pattern array at every entry point. `[]`, `["$or"]`, `["$not"]`, `["$not", p1, p2, …]`, an empty pattern string, and a reserved token at any index but 0 are refused rather than silently matching nothing. Through apcore 0.28.0 all of them made the rule inert, which on a `deny` rule under `default_effect: allow` permitted the very call the rule named. `build_acl_from_config` realigns its own per-rule order to §6.2.1's normative `effect` → `approval` → `callers` → `targets` (all three bridges currently run it in reverse), and wraps apcore's `ACLRuleError` in the bridge's own error type with an `mcp.acl.rules[i]` prefix — apcore's message names the type, not the rule, and in Python `ACLRuleError` is a `ModuleError`, not the `ValueError` the builder's contract promises.
+
+**User Story:** As an operator writing an ACL in `apcore.yaml`, I want a rule I got wrong to fail at startup naming the rule I got wrong — not to load clean, validate clean, and permit the call I wrote it to block.
+
+**Acceptance Criteria:**
+1. `[]`, `["$or"]`, `["$not"]`, `["$not", p1, p2]`, an empty pattern string, and a reserved token off index 0 are each refused by `build_acl_from_config` in all three SDKs, with a message prefixed `mcp.acl.rules[i] ` and apcore's reason preserved verbatim after the prefix.
+2. `["$or", "a"]` (one operand) and `["$orders.*"]` (a literal beginning with `$`) still load — the boundary is *at least* one operand, and detection is by equality, never a `$` prefix.
+3. A rule wrong in both `effect` and `callers` reports **`effect`**; `default_effect` is judged ahead of every rule.
+4. The raised error is the bridge's documented type per language (`ValueError` / `Error` / `ConfigError`), with apcore's error chained as the cause.
+5. `conformance/fixtures/acl_config.json` at `contract_version` 1.2 passes in all three bridges, with `callers` / `targets` mirrors on every shape case.
+
+**Priority:** P0
+
+---
+
+### F-053: ACL Tier-2 Startup Diagnostic (v0.20+)
+
+**Title:** Report rules that load cleanly and can protect nothing.
+
+**Description:** Closing the arities does not exhaust the inert class: `["$not", "*"]` has legal arity, exactly one operand, and matches nothing — the identical fail-open through a well-formed array. apcore reports these through `ACL.validate_rules()` as findings that load, change no decision, and are never rejected, because the predicate cannot be closed without freezing the pattern language. No bridge called `validate_rules()`. `serve()` / `async_serve()` now call it once the registry is assembled and log each finding at WARNING.
+
+**User Story:** As an operator, I want to be told that my `targets: ["$not", "*"]` rule protects nothing, at startup, rather than discovering it from an audit log after the call it should have stopped.
+
+**Acceptance Criteria:**
+1. When an ACL is attached, `serve()` / `async_serve()` call `validate_rules()` once after the registry is assembled.
+2. Each finding produces one WARNING line naming the rule index, the field, and apcore's reason verbatim.
+3. A finding never fails startup, and an exception from `validate_rules()` is caught, logged, and does not abort startup — matching the `governance_state()` guard added in 0.19.0.
+4. Absent ACL: the call is skipped silently.
+
+**Priority:** P1
+
+---
+
+### F-054: OpenAPI Backend (v0.20+)
+
+**Title:** Serve an OpenAPI 3.0/3.1 document as MCP tools.
+
+**Description:** A third backend source alongside an extensions directory and a code-built `Registry`. `openapi_backend(spec, …)` composes apcore-toolkit 0.11.0's `load_spec` → `OpenAPIScanner.scan` → `HTTPProxyRegistryWriter.write` into a populated `Registry`, which the existing bridge serves unchanged — no new scanning logic, no new schema conversion, no new execution path. Reached from the Config Bus (`mcp.openapi`), from seven CLI flags, and from `APCoreMCP.from_openapi(...)`. It is the first backend source with full Rust parity, because an OpenAPI document needs no directory discoverer.
+
+**User Story:** As a developer with an existing REST API and no apcore project, I want to point apcore-mcp at my `openapi.json` and get an MCP server, so an agent can call my API through the same governance pipeline an apcore module would.
+
+**Acceptance Criteria:**
+1. `--from-openapi <url|path>` and `mcp.openapi.spec` both start a server whose tools are one per operation, with `module_id` derived by the toolkit's `derive_module_id` (byte-identical across SDKs).
+2. Every scanner-derived `module_id` is projected into apcore's legal alphabet (lowercase; `-` → `_`) before registration, then reaches MCP verbatim (dots retained) and OpenAI dash-normalized. Without the projection the canonical Swagger Petstore registers zero modules — apcore's registry refuses `listPets`. An ID still illegal after projection skips the operation with a WARNING rather than failing the server.
+3. Scan warnings log at WARNING naming the module; a failed `WriteResult` logs at ERROR and does not stop the remaining modules registering; a zero-module document warns and starts.
+4. A document that is not OpenAPI 3.0.x/3.1.x, that cannot be parsed, or that yields no usable base URL with none supplied, is fatal.
+5. Python raises an actionable "install `apcore-mcp[openapi]`" message rather than an `ImportError` when apcore-toolkit is absent; TypeScript and Rust depend on it unconditionally.
+6. `mcp.openapi.spec` is handled as a path-typed key by the bridge itself — an `http(s)://` value verbatim, a set-but-empty value discarded with a WARNING, a relative path resolved against `Config.project_root` (apcore 0.30.0). apcore's own §9.2.1/§9.2.2 protections cover only apcore's key surface and do not reach a consumer namespace.
+
+**Priority:** P1
+
+---
+
+### F-055: OpenAPI Governance Guards (v0.20+)
+
+**Title:** Make the two silent gaps in an OpenAPI-derived module set loud.
+
+**Description:** An OpenAPI document describes an API's shape and says almost nothing about the consequences of calling it. Two consequences are recorded normatively rather than left implicit. **Every scanned module arrives with `requires_approval = false`** — annotations are inferred from the HTTP method alone, and `POST` / `PATCH` carry no behavioural hint at all, so a `POST /charges` is annotated exactly like a `POST /echo`. **An ACL `targets` pattern written against an operation name is owned by the upstream API's authors** — a renamed `operationId` changes the derived `module_id` and silently unhooks a deny rule.
+
+**User Story:** As an operator exposing someone else's API to an agent, I want the bridge to tell me that nothing will ask for approval before a write, and to make it hard to write an ACL rule that an upstream rename can quietly disarm.
+
+**Acceptance Criteria:**
+1. A startup WARNING is emitted when an OpenAPI backend registers any module whose method is in `{POST, PUT, PATCH, DELETE}`. It reports the **absence of an approval path, never the presence of protection** — `governance_state().acl_configured` does **not** suppress it, following the rule apcore states on `GovernanceState.unprotected_control_surface`.
+2. The warning is suppressed only by: nothing to warn about; every such module declaring `requires_approval` itself; or `mcp.openapi.acknowledge_unapproved_writes: true`. It is downgraded in wording — not silenced — when an ACL carries `approval: required`, and escalated when `builtin_approval_gate_wired` is false.
+3. `prefix` is mandatory when an OpenAPI backend is combined with any other backend source; the bridge refuses to start without it. A prefix is naming hygiene, not the collision defence.
+4. A pre-write preflight intersects the full derived-ID set against the target registry and fails atomically, naming every collision, before anything is written — so a duplicate can never degrade into a partial registry via a logged-and-skipped `WriteResult`.
+5. `conformance/fixtures/openapi_backend.json` pins `post_carries_no_behavioral_hint` as a fact, so the gap cannot be closed accidentally in one language only, and `id_collision_against_registry_rejected` pins the preflight.
+6. The documentation states the three mitigations (ACL `approval: required`, `gate_destructive`, a `transform_module` hook) and recommends `default_effect: deny` plus a prefixed catch-all.
+
+**Priority:** P1
+
+---
+
 **Feature Count Summary:**
 
 | Priority | Count | Features |
@@ -1320,6 +1397,17 @@ extra as its own `\n\n`-separated paragraph while Python joins them with `\n`.
 | F-051 | P1 | Rust `AsyncTaskBridge` lifecycle methods (`submit`, `cancel`, `cancel_session_tasks`, `handle_meta_tool`, `shutdown`) become `async fn` — propagates upstream apcore 0.20+ async signatures |
 
 | **Total (v0.15.0)** | **51** | F-001 through F-051 |
+
+**v0.20.0 additions** (additive, no F-ID renumbering):
+
+| F-ID | Priority | Title |
+|------|----------|-------|
+| F-052 | P0 | `mcp.acl` pattern-array shape closure — reject `[]` / `["$or"]` / `["$not"]` / multi-operand `$not` / empty pattern / off-index reserved token, in §6.2.1 order, with the rule index in the message |
+| F-053 | P1 | ACL tier-2 startup diagnostic — call `ACL.validate_rules()` after assembly and WARN on rules that load and protect nothing |
+| F-054 | P1 | OpenAPI Backend — serve an OpenAPI 3.0/3.1 document as MCP tools via apcore-toolkit's `OpenAPIScanner` + `HTTPProxyRegistryWriter`; `mcp.openapi.spec` is path-typed and bridge-owned |
+| F-055 | P1 | OpenAPI governance guards — mandatory `prefix` in mixed deployments, and a startup WARNING when write-method modules register with no ACL attached |
+
+| **Total (v0.20.0)** | **55** | F-001 through F-055 |
 
 ---
 

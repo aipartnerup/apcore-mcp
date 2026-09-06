@@ -28,6 +28,9 @@ apcore-mcp turns apcore modules into MCP tools (and OpenAI-compatible tool schem
 - [Async Task Bridge](https://apcore-mcp.aiperceivable.com/features/async-task-bridge/): Runs long-lived modules as tasks with submit/status/cancel meta-tools.
 - [Explorer UI](https://apcore-mcp.aiperceivable.com/features/explorer-ui/): Browser UI to inspect and test exposed MCP tools.
 - [Markdown](https://apcore-mcp.aiperceivable.com/features/markdown/): Renders rich Markdown tool descriptions from apcore-toolkit.
+- [System Management Extension](https://apcore-mcp.aiperceivable.com/features/system-management-extension/): Advertises the `system.*` management surface's shape in `initialize` via the `com.aiperceivable/management` MCP extension.
+- [ACL Builder](https://apcore-mcp.aiperceivable.com/features/acl-builder/): Turns the `mcp.acl` Config Bus section into an apcore ACL, enforcing PROTOCOL_SPEC §6.2.1's closed pattern-array shape.
+- [OpenAPI Backend](https://apcore-mcp.aiperceivable.com/features/openapi-backend/): Serves an OpenAPI 3.0/3.1 document as MCP tools, proxied over HTTP.
 
 ## Specifications
 

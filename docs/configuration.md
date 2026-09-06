@@ -8,11 +8,24 @@ This page provides a detailed reference for all configuration options available 
 
 ## CLI Arguments
 
-The CLI allows you to launch an MCP server by pointing to an extensions directory.
+The CLI allows you to launch an MCP server by pointing to an extensions directory or, from 0.20.0, at an OpenAPI document.
+
+!!! note "New in 0.20.0"
+    `--from-openapi`, every `--openapi-*` flag and the `mcp.openapi` Config Bus section ship in
+    0.20.0, as does the `mcp.acl` pattern-array closure noted in the Config Bus table. They
+    require apcore >= 0.30.0 and apcore-toolkit >= 0.11.1.
+
+**Backend-source rule.** **At least one** source is required. The two may be combined — an apcore project and a remote API served from one bridge is a supported deployment — and when more than one is given, `--openapi-prefix` becomes **required** so the two ID spaces cannot collide. The resulting registry is the **union**, assembled in a fixed order: extensions directory first, then OpenAPI operations. Order matters only for diagnostics; a module ID appearing in both sources is a startup failure, not a last-writer-wins merge (see [OpenAPI Backend § ID collisions](features/openapi-backend.md#id-collisions-are-a-startup-failure)). A `Registry` or `Executor` passed programmatically **replaces** both — it is not merged with them, because the caller who built it already decided what is in it; passing one together with `--extensions-dir` or `--from-openapi` is a configuration error rather than a silent override.
 
 | Argument | Default | Description |
 |---|---|---|
-| `--extensions-dir` | *(required)* | Path to apcore extensions directory. **Rust:** accepted, but builds an empty registry — see [Getting Started §2](getting-started.md) |
+| `--extensions-dir` | *(required unless `--from-openapi` is given)* | Path to apcore extensions directory. **Rust:** accepted, but builds an empty registry — see [Getting Started §2](getting-started.md) |
+| `--from-openapi` | — | Spec URL or path — serve an OpenAPI 3.0/3.1 API as MCP tools instead of (or alongside) an extensions directory. See [OpenAPI Backend](features/openapi-backend.md) |
+| `--openapi-base-url` | from document | Base URL for proxied requests; defaults to the document's `servers[0].url` |
+| `--openapi-prefix` | — | Prepended to every derived module ID. **Required** when `--from-openapi` is combined with another backend source |
+| `--openapi-include` / `--openapi-exclude` | — | Scanner filters on the derived module IDs |
+| `--openapi-header` | — | `Key: Value`, repeatable. Sent with the **spec fetch only**, never with proxied calls |
+| `--openapi-no-deprecated` | off | Skip operations marked `deprecated: true` |
 | `--transport` | `stdio` | Transport protocol: `stdio`, `streamable-http`, or `sse` |
 | `--host` | `127.0.0.1` | Host for HTTP-based transports |
 | `--port` | `8000` | Port for HTTP-based transports (1-65535) |
@@ -67,7 +80,8 @@ uppercase the key and prefix it with `APCORE_MCP_`.
 | `explorer_prefix` | `/explorer` | Mount path for the Explorer |
 | `require_auth` | `true` | Require authentication on HTTP transports |
 | `middleware` | `[]` | Declarative middleware list; each entry is `{type: ..., ...kwargs}` |
-| `acl` | `null` | Declarative ACL — `{default_effect: "deny"\|"allow", rules: [...]}`; `null` means allow all |
+| `acl` | `null` | Declarative ACL — `{default_effect: "deny"\|"allow", rules: [...]}`; `null` means allow all. **apcore 0.29.0 closes the shape of every `callers` / `targets` array** — see [ACL Builder](features/acl-builder.md#pattern-array-shape-closure-apcore-0290) |
+| `openapi` | `null` | OpenAPI backend — `{spec, base_url, prefix, include, exclude, include_deprecated, timeout, headers, acknowledge_unapproved_writes}`. `spec` is **path-typed**: a URL is used verbatim, a relative path resolves against `Config.project_root`, and a set-but-empty value is discarded — apcore's own §9.2.1 protections do not cover the `mcp` namespace. See see [OpenAPI Backend](features/openapi-backend.md#config-bus-mcpopenapi) |
 | `output_format` | `json` | **Rust only.** `json`, `csv`, `jsonl`. Python and TypeScript do not read this key from the Config Bus — set the formatter programmatically or with `--output-format` there |
 
 The `mcp.pipeline` section is read separately to build a custom execution strategy; see the
